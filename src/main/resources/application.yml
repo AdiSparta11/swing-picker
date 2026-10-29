@@ -1,0 +1,6 @@
+server:
+  port: ${PORT:8080}   # Render injects PORT
+
+spring:
+  application:
+    name: swing-picker
