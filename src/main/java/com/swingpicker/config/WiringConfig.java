@@ -9,6 +9,9 @@ import com.swingpicker.core.RecommendationService;
 import com.swingpicker.core.RecommendationService.Rules;
 import com.swingpicker.core.RecommendationService.Stock;
 import com.swingpicker.core.Setup;
+import com.swingpicker.data.CachingMarketDataProvider;
+import com.swingpicker.data.YahooChartParser;
+import com.swingpicker.data.YahooMarketDataProvider;
 import com.swingpicker.domain.Bar;
 import com.swingpicker.domain.TradePlan;
 import org.springframework.context.annotation.Bean;
@@ -18,7 +21,10 @@ import org.springframework.core.io.ClassPathResource;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 
@@ -30,10 +36,22 @@ import java.util.Optional;
 public class WiringConfig {
 
     @Bean
-    public RecommendationService recommendationService() throws IOException {
-        MarketDataProvider data = (symbol, years) -> {
-            throw new UnsupportedOperationException("Step 8: market data client");
-        };
+    public Clock clock() {
+        return Clock.system(YahooChartParser.IST);
+    }
+
+    /** Yahoo daily bars, cached for an hour per symbol. */
+    @Bean
+    public MarketDataProvider marketDataProvider(Clock clock) {
+        HttpClient http = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .followRedirects(HttpClient.Redirect.NORMAL)
+                .build();
+        return new CachingMarketDataProvider(new YahooMarketDataProvider(http, clock), Duration.ofHours(1), clock);
+    }
+
+    @Bean
+    public RecommendationService recommendationService(MarketDataProvider data) throws IOException {
         Setup pullback = new Setup() {
             public String name() {
                 return "trend-pullback";

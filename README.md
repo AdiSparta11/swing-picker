@@ -41,7 +41,7 @@ domain/     records: Bar, TradePlan, Edge, Candidate, Pick, Recommendation
 | 5 | Backtest `EdgeEstimator` | pending |
 | 6 | Context/event filters (Nifty trend, results dates) | pending |
 | 7 | Monte Carlo replay | pending |
-| 8 | Yahoo `.NS` `MarketDataProvider` | pending |
+| 8 | Yahoo `.NS` `MarketDataProvider` (adjusted daily bars, 1h cache). Check: `GET /api/bars/RELIANCE` | done |
 | 9 | Web page, Render deploy | pending |
 
 ## Deploy (Render, free)
