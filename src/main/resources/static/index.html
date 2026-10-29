@@ -33,6 +33,18 @@
   .neg { color:var(--bad); } .pos { color:var(--good); }
   .hist { margin-top:10px; font-size:13px; color:var(--muted); }
   .totals { margin-top:16px; font-size:14px; color:var(--muted); }
+  h2 { font-size:16px; margin:28px 0 4px; }
+  p.note { margin:0 0 8px; font-size:13px; color:var(--muted); }
+  .tablewrap { overflow-x:auto; border:1px solid var(--line); border-radius:10px; background:var(--card); }
+  table { width:100%; border-collapse:collapse; font-size:14px; font-variant-numeric:tabular-nums; }
+  th, td { padding:8px 10px; text-align:right; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th:first-child, td:first-child { text-align:left; }
+  tr:last-child td { border-bottom:0; }
+  th { font-weight:600; color:var(--muted); font-size:12px; }
+  .opt { margin-top:8px; padding:12px 14px; border:1px solid var(--line); border-radius:10px; background:var(--card); font-size:14px; }
+  .opt .why { color:var(--muted); margin-top:4px; }
+  .opt .lv { font-variant-numeric:tabular-nums; margin-top:4px; }
+  .tag { display:inline-block; font-size:12px; padding:1px 8px; border-radius:999px; border:1px solid var(--line); color:var(--muted); margin-left:6px; }
   details { margin-top:28px; font-size:14px; color:var(--muted); }
   details li { margin-bottom:6px; }
   small.foot { color:var(--muted); display:block; margin-top:20px; font-size:12px; }
@@ -73,7 +85,7 @@
     const expected = p.netR * p.riskRupees;
     return `<div class="card">
       <div class="head"><span class="sym">${esc(t.symbol)}</span><span class="sector">${esc(p.candidate.sector)}</span></div>
-      <div class="order">Buy <b>${p.quantity}</b> shares at next open, ≈ ${inr(p.amount)}. Don't pay above <b>${px(t.maxEntry)}</b>.</div>
+      <div class="order">Buy <b>${p.quantity}</b> share${p.quantity === 1 ? '' : 's'} at next open, ≈ ${inr(p.amount)}. Don't pay above <b>${px(t.maxEntry)}</b>.</div>
       <div class="grid">
         <div class="cell"><small>Reference price</small><span>${px(t.entry)}</span></div>
         <div class="cell"><small>Stop loss</small><span class="neg">${px(t.stop)}</span></div>
@@ -86,6 +98,37 @@
       </div>
       <div class="hist">Setup: ${esc(t.setupName)} on ${esc(t.signalDate)}. History: ${e.stockTrades} trades on this stock, ${e.poolTrades} across all stocks (blended). Expected ${p.netR >= 0 ? '+' : ''}${p.netR.toFixed(2)}R per trade after charges.</div>
     </div>`;
+  }
+
+  const sgnR = v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2) + 'R';
+
+  function setupTable(setups) {
+    if (!setups || !setups.length) return '';
+    const rows = setups.map(s => `<tr>
+        <td>${esc(s.setup)}</td><td>${s.trades}</td><td>${Math.round(s.winRate * 100)}%</td>
+        <td>+${s.avgWinR.toFixed(2)}R</td><td>−${s.avgLossR.toFixed(2)}R</td>
+        <td class="${s.expectancyR >= 0 ? 'pos' : 'neg'}">${sgnR(s.expectancyR)}</td></tr>`).join('');
+    return `<h2>How each setup has done</h2>
+      <p class="note">Every trade each rule would have taken over the last 3 years across all scanned stocks, before charges (charges cost roughly another 0.03–0.10R per trade).</p>
+      <div class="tablewrap"><table>
+        <tr><th>Setup</th><th>Trades</th><th>Win rate</th><th>Avg win</th><th>Avg loss</th><th>Per trade</th></tr>${rows}
+      </table></div>`;
+  }
+
+  function otherOptions(considered) {
+    const others = (considered || []).filter(c => !c.picked);
+    if (!others.length) return '';
+    return `<h2>Also fired today, not recommended</h2>
+      <p class="note">Shown so you can decide for yourself. The reason is why the app passed on each.</p>`
+      + others.map(c => {
+        const t = c.candidate.plan, e = c.candidate.edge;
+        return `<div class="opt">
+          <b>${esc(t.symbol)}</b><span class="tag">${esc(t.setupName)}</span><span class="tag">${esc(c.candidate.sector)}</span>
+          <div class="lv">Ref ${px(t.entry)} · stop ${px(t.stop)} · target ${px(t.target)} · don't pay above ${px(t.maxEntry)}</div>
+          <div class="lv">Hist. win rate ${Math.round(e.winRate * 100)}% · ${sgnR(c.candidate.expectedNetR)} per trade after charges · ${e.stockTrades} past trades on this stock</div>
+          <div class="why">${esc(c.status)}</div>
+        </div>`;
+      }).join('');
   }
 
   document.getElementById('f').addEventListener('submit', async (ev) => {
@@ -102,12 +145,14 @@
       if (!res.ok) {
         out.innerHTML = `<div class="verdict"><b>Couldn't get an answer (HTTP ${res.status})</b>${esc(body.marketDataError || body.error || body.pending || JSON.stringify(body))}</div>`;
       } else if (!body.trade) {
-        out.innerHTML = `<div class="verdict"><b>No trade today.</b>${esc(body.reason)}</div>`;
+        out.innerHTML = `<div class="verdict"><b>No trade today.</b>${esc(body.reason)} (${body.stocksScanned} stocks scanned)</div>`
+          + otherOptions(body.considered) + setupTable(body.setups);
       } else {
         const risk = body.picks.reduce((s, p) => s + p.riskRupees, 0);
-        out.innerHTML = `<div class="verdict"><b>${body.picks.length} pick${body.picks.length > 1 ? 's' : ''}, best first</b>${esc(body.reason)}</div>`
+        out.innerHTML = `<div class="verdict"><b>${body.picks.length} pick${body.picks.length > 1 ? 's' : ''}, best first</b>${esc(body.reason)} (${body.stocksScanned} stocks scanned)</div>`
           + body.picks.map(card).join('')
-          + `<div class="totals">Invested ≈ ${inr(body.investedAmount)} · Unused ${inr(body.unusedAmount)} · If every stop hits: −${inr(risk)} (plus charges)</div>`;
+          + `<div class="totals">Invested ≈ ${inr(body.investedAmount)} · Unused ${inr(body.unusedAmount)} · If every stop hits: −${inr(risk)} (plus charges)</div>`
+          + otherOptions(body.considered) + setupTable(body.setups);
       }
     } catch (err) {
       out.innerHTML = `<div class="verdict"><b>Request failed</b>${esc(err)}</div>`;

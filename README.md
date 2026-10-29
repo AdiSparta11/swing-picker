@@ -36,7 +36,8 @@ domain/     records: Bar, TradePlan, Edge, Candidate, Pick, Recommendation
 |---|---|
 | Universe | Nifty 200 from NSE at startup (falls back to bundled Nifty 50). Check: `GET /api/universe` |
 | Data | Yahoo `.NS` daily bars, 3 years, split/dividend adjusted, completed sessions only. Check: `GET /api/bars/RELIANCE` |
-| Setup | Trend pullback: uptrend (close > SMA200, SMA50 > SMA200 and rising), dip to SMA20 in last 5 sessions, turn = close above SMA20 and yesterday's high |
+| Setups | **Trend pullback:** uptrend (close > SMA200, SMA50 > SMA200 and rising), dip to SMA20 in last 5 sessions, turn = close above SMA20 and yesterday's high. **55-day breakout:** close > SMA200, close above the prior 55-day high on ≥1.5× 20-day volume, close in top 25% of the day's range, not more than 3 ATR above SMA20 |
+| Transparency | Every run returns all stocks that fired with the reason each was or wasn't picked, plus each setup's 3-year track record |
 | Plan | Stop just under the dip (min 1 ATR), target 2R, don't buy above entry + 0.25R, exit after 15 sessions |
 | Backtest | Replays the rule over 3 years: next-open entries, gap fills at the open, stop assumed first if both touched. Per-stock stats blended toward the universe (prior of 20 trades) |
 | Costs | Zerodha delivery schedule: STT 0.1% each side, stamp 0.015% buy, NSE 0.00307%, SEBI, GST, DP ₹15.34 per stock sold |
@@ -45,7 +46,7 @@ domain/     records: Bar, TradePlan, Edge, Candidate, Pick, Recommendation
 
 Every number lives in `config/WiringConfig.java`.
 
-Known limits: survivorship bias (today's index list), Yahoo is unofficial, one setup only so far, no event filter yet (results dates).
+Known limits: survivorship bias (today's index list), Yahoo is unofficial, no event filter yet (results dates).
 
 ## Deploy (Render, free)
 

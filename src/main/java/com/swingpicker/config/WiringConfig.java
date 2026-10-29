@@ -1,6 +1,7 @@
 package com.swingpicker.config;
 
 import com.swingpicker.core.BacktestEdgeEstimator;
+import com.swingpicker.core.BreakoutSetup;
 import com.swingpicker.core.CostModel;
 import com.swingpicker.core.ExpectedNetRRanker;
 import com.swingpicker.core.MarketDataProvider;
@@ -88,7 +89,7 @@ public class WiringConfig {
                                                        CostModel costs, Clock clock) {
         var edges = new BacktestEdgeEstimator(universe.stocks(), data, HISTORY_YEARS, PRIOR_TRADES,
                 Duration.ofHours(6), clock);
-        return new RecommendationService(universe.stocks(), List.of(new TrendPullbackSetup()), data, edges,
+        return new RecommendationService(universe.stocks(), List.of(new TrendPullbackSetup(), new BreakoutSetup()), data, edges,
                 costs, new ExpectedNetRRanker(), new RiskBasedPositionSizer(costs, LIMITS), RULES);
     }
 }

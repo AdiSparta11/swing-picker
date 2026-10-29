@@ -76,12 +76,30 @@ public class BacktestEdgeEstimator implements EdgeEstimator {
     }
 
     @Override
-    public synchronized Edge estimate(Setup setup, String symbol) {
+    public synchronized Edge pool(Setup setup) {
+        Stats pool = memoFor(setup).pool();
+        if (pool.n() == 0) {
+            return new Edge(0, 0, 0, 0, 0);
+        }
+        int losses = pool.n() - pool.wins();
+        return new Edge((double) pool.wins() / pool.n(),
+                pool.wins() == 0 ? 0 : pool.sumWinR() / pool.wins(),
+                losses == 0 ? 0 : pool.sumLossR() / losses,
+                pool.n(), pool.n());
+    }
+
+    private Memo memoFor(Setup setup) {
         Memo m = memo.get(setup.name());
         if (m == null || m.at().plus(ttl).isBefore(clock.instant())) {
             m = build(setup);
             memo.put(setup.name(), m);
         }
+        return m;
+    }
+
+    @Override
+    public synchronized Edge estimate(Setup setup, String symbol) {
+        Memo m = memoFor(setup);
         Stats pool = m.pool();
         if (pool.n() == 0) {
             return new Edge(0, 0, 0, 0, 0);
