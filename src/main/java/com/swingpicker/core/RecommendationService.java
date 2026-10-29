@@ -10,13 +10,17 @@ import com.swingpicker.domain.TradePlan;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * "I want to invest X today" -> sized picks, or an explicit no.
- * Plain Java on purpose: no Spring here, so every rule is unit-testable by hand.
+ * Plain Java on purpose: no Spring here, so every rule is unit-testable.
  */
 public class RecommendationService {
 
@@ -26,11 +30,13 @@ public class RecommendationService {
 
     /**
      * @param minExpectedNetR  a candidate must beat this after costs, else it's not worth the risk
-     * @param minSampleSize    ignore edges built on too few historical trades
+     * @param minPoolTrades    ignore a setup whose whole-universe history has fewer trades than this
      * @param maxPerSector     at most this many picks from one sector
      * @param historyYears     how much daily history to load
+     * @param fetchThreads     parallel market-data fetches
      */
-    public record Rules(double minExpectedNetR, int minSampleSize, int maxPerSector, int historyYears) {
+    public record Rules(double minExpectedNetR, int minPoolTrades, int maxPerSector, int historyYears,
+                        int fetchThreads) {
     }
 
     private final List<Stock> universe;
@@ -60,20 +66,19 @@ public class RecommendationService {
             throw new IllegalArgumentException("Amount must be positive");
         }
 
+        Map<Stock, List<Bar>> bars = fetchAll();
+
         // 1. Every stock where some setup fired on the latest bar, scored after costs.
         List<Candidate> candidates = new ArrayList<>();
-        for (Stock stock : universe) {
-            List<Bar> bars = data.dailyBars(stock.symbol(), rules.historyYears());
-            if (bars.isEmpty()) {
-                continue;
-            }
+        for (Map.Entry<Stock, List<Bar>> e : bars.entrySet()) {
+            Stock stock = e.getKey();
             for (Setup setup : setups) {
-                Optional<TradePlan> plan = setup.detect(stock.symbol(), bars);
+                Optional<TradePlan> plan = setup.detect(stock.symbol(), e.getValue());
                 if (plan.isEmpty()) {
                     continue;
                 }
-                Edge edge = edges.estimate(setup);
-                if (edge.sampleSize() < rules.minSampleSize()) {
+                Edge edge = edges.estimate(setup, stock.symbol());
+                if (edge.poolTrades() < rules.minPoolTrades()) {
                     continue;
                 }
                 double score = ranker.expectedNetR(edge, costInR(plan.get()));
@@ -81,7 +86,8 @@ public class RecommendationService {
             }
         }
         if (candidates.isEmpty()) {
-            return Recommendation.noTrade(amount, "No setup fired today on any stock in the universe.");
+            return Recommendation.noTrade(amount, "No setup fired on the latest session across "
+                    + bars.size() + " stocks. Waiting is a position too.");
         }
 
         // 2. Keep only real edges, best first, capped per sector.
@@ -91,7 +97,7 @@ public class RecommendationService {
                 .toList());
         if (ranked.isEmpty()) {
             return Recommendation.noTrade(amount, candidates.size()
-                    + " setup(s) fired, but none has a positive expected return after costs.");
+                    + " setup(s) fired, but none has enough historical edge after costs.");
         }
 
         // 3. Turn them into share quantities that fit the amount.
@@ -101,6 +107,39 @@ public class RecommendationService {
                     "Good setups exist, but this amount is too small to buy them without costs eating the edge.");
         }
         return Recommendation.of(amount, picks);
+    }
+
+    /** Fetch every stock in parallel. A stock that fails is skipped; if all fail, the last failure surfaces. */
+    private Map<Stock, List<Bar>> fetchAll() {
+        ExecutorService pool = Executors.newFixedThreadPool(rules.fetchThreads());
+        try {
+            Map<Stock, CompletableFuture<List<Bar>>> futures = new LinkedHashMap<>();
+            for (Stock s : universe) {
+                futures.put(s, CompletableFuture.supplyAsync(() -> data.dailyBars(s.symbol(), rules.historyYears()), pool));
+            }
+            Map<Stock, List<Bar>> out = new LinkedHashMap<>();
+            RuntimeException lastFailure = null;
+            for (Map.Entry<Stock, CompletableFuture<List<Bar>>> f : futures.entrySet()) {
+                try {
+                    List<Bar> b = f.getValue().join();
+                    if (!b.isEmpty()) {
+                        out.put(f.getKey(), b);
+                    }
+                } catch (RuntimeException e) {
+                    RuntimeException cause = (e.getCause() instanceof RuntimeException r) ? r : e;
+                    if (cause instanceof UnsupportedOperationException) {
+                        throw cause;
+                    }
+                    lastFailure = cause;
+                }
+            }
+            if (out.isEmpty() && lastFailure != null) {
+                throw lastFailure;
+            }
+            return out;
+        } finally {
+            pool.shutdown();
+        }
     }
 
     /**

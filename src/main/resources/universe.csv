@@ -1,11 +1,50 @@
 symbol,sector
-RELIANCE,Energy
-HDFCBANK,Banking
-ICICIBANK,Banking
-INFY,IT
-TCS,IT
+RELIANCE,Oil Gas & Consumable Fuels
+ONGC,Oil Gas & Consumable Fuels
+COALINDIA,Oil Gas & Consumable Fuels
+HDFCBANK,Financial Services
+ICICIBANK,Financial Services
+SBIN,Financial Services
+KOTAKBANK,Financial Services
+AXISBANK,Financial Services
+INDUSINDBK,Financial Services
+BAJFINANCE,Financial Services
+BAJAJFINSV,Financial Services
+SHRIRAMFIN,Financial Services
+SBILIFE,Financial Services
+HDFCLIFE,Financial Services
+JIOFIN,Financial Services
+INFY,Information Technology
+TCS,Information Technology
+HCLTECH,Information Technology
+WIPRO,Information Technology
+TECHM,Information Technology
+BHARTIARTL,Telecommunication
+ITC,Fast Moving Consumer Goods
+HINDUNILVR,Fast Moving Consumer Goods
+NESTLEIND,Fast Moving Consumer Goods
+TATACONSUM,Fast Moving Consumer Goods
 LT,Construction
-ITC,FMCG
-SUNPHARMA,Pharma
-MARUTI,Auto
-TITAN,Consumer
+ULTRACEMCO,Construction Materials
+GRASIM,Construction Materials
+M&M,Automobile and Auto Components
+MARUTI,Automobile and Auto Components
+EICHERMOT,Automobile and Auto Components
+HEROMOTOCO,Automobile and Auto Components
+BAJAJ-AUTO,Automobile and Auto Components
+SUNPHARMA,Healthcare
+CIPLA,Healthcare
+DRREDDY,Healthcare
+APOLLOHOSP,Healthcare
+NTPC,Power
+POWERGRID,Power
+TITAN,Consumer Durables
+ASIANPAINT,Consumer Durables
+TRENT,Consumer Services
+ETERNAL,Consumer Services
+TATASTEEL,Metals & Mining
+JSWSTEEL,Metals & Mining
+HINDALCO,Metals & Mining
+ADANIENT,Metals & Mining
+ADANIPORTS,Services
+BEL,Capital Goods

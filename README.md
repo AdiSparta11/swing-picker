@@ -30,19 +30,22 @@ domain/     records: Bar, TradePlan, Edge, Candidate, Pick, Recommendation
 4. `PositionSizer` turns them into whole-share quantities within the amount; fixed per-stock costs decide if a position is too small to be worth it.
 5. Nothing survives → "no trade", with which stage eliminated everything.
 
-## Build steps
+## What it does today
 
-| Step | Piece | Status |
-|---|---|---|
-| 1–2 | Setup rules + exit plan (entry/stop/target/max hold) | pending |
-| 3 | NSE delivery `CostModel` | pending |
-| — | `Ranker`: expected net R | pending |
-| 4 | `PositionSizer` | pending |
-| 5 | Backtest `EdgeEstimator` | pending |
-| 6 | Context/event filters (Nifty trend, results dates) | pending |
-| 7 | Monte Carlo replay | pending |
-| 8 | Yahoo `.NS` `MarketDataProvider` (adjusted daily bars, 1h cache). Check: `GET /api/bars/RELIANCE` | done |
-| 9 | Web page, Render deploy | pending |
+| Piece | Choice |
+|---|---|
+| Universe | Nifty 200 from NSE at startup (falls back to bundled Nifty 50). Check: `GET /api/universe` |
+| Data | Yahoo `.NS` daily bars, 3 years, split/dividend adjusted, completed sessions only. Check: `GET /api/bars/RELIANCE` |
+| Setup | Trend pullback: uptrend (close > SMA200, SMA50 > SMA200 and rising), dip to SMA20 in last 5 sessions, turn = close above SMA20 and yesterday's high |
+| Plan | Stop just under the dip (min 1 ATR), target 2R, don't buy above entry + 0.25R, exit after 15 sessions |
+| Backtest | Replays the rule over 3 years: next-open entries, gap fills at the open, stop assumed first if both touched. Per-stock stats blended toward the universe (prior of 20 trades) |
+| Costs | Zerodha delivery schedule: STT 0.1% each side, stamp 0.015% buy, NSE 0.00307%, SEBI, GST, DP ₹15.34 per stock sold |
+| Ranking | Expected net R = p·avgWin − (1−p)·avgLoss − costs; must exceed +0.10R; max 2 per industry |
+| Sizing | 2% of the amount at risk per stock, max 35% of the amount per stock, whole shares, sized at the max-entry price |
+
+Every number lives in `config/WiringConfig.java`.
+
+Known limits: survivorship bias (today's index list), Yahoo is unofficial, one setup only so far, no event filter yet (results dates).
 
 ## Deploy (Render, free)
 
