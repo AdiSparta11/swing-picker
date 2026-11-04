@@ -36,7 +36,9 @@ public class YahooMarketDataProvider implements MarketDataProvider {
 
     @Override
     public List<Bar> dailyBars(String symbol, int years) {
-        String yahooSymbol = URLEncoder.encode(symbol.trim().toUpperCase() + ".NS", StandardCharsets.UTF_8);
+        String s = symbol.trim().toUpperCase();
+        // Indices are passed as Yahoo writes them ("^NSEI"); stocks get the NSE suffix.
+        String yahooSymbol = URLEncoder.encode(s.startsWith("^") ? s : s + ".NS", StandardCharsets.UTF_8);
         HttpRequest request = HttpRequest.newBuilder(URI.create(String.format(URL, yahooSymbol, years)))
                 .timeout(Duration.ofSeconds(15))
                 .header("User-Agent", USER_AGENT)

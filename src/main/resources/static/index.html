@@ -21,6 +21,10 @@
   .status { margin-top:20px; color:var(--muted); }
   .verdict { margin-top:20px; padding:14px 16px; border-radius:10px; border:1px solid var(--line); background:var(--card); }
   .verdict b { display:block; font-size:18px; margin-bottom:2px; }
+  .verdict.ok { border-color:var(--good); }
+  h2.section { font-size:20px; margin:36px 0 2px; padding-top:20px; border-top:1px solid var(--line); }
+  h2.section:first-of-type { border-top:0; padding-top:0; }
+  p.how { font-size:14px; margin:10px 0 0; }
   .card { margin-top:12px; padding:16px; border:1px solid var(--line); border-radius:10px; background:var(--card); }
   .head { display:flex; justify-content:space-between; align-items:baseline; gap:8px; flex-wrap:wrap; }
   .sym { font-size:20px; font-weight:650; }
@@ -54,7 +58,7 @@
 <body>
 <main>
   <h1>Swing Picker</h1>
-  <p class="sub">How much do you want to invest today? Holding period: up to 3 weeks.</p>
+  <p class="sub">How much do you want to invest today? You get two answers: a momentum portfolio (hold ~1 month) and swing trades (hold up to 3 weeks). Choose one for this money.</p>
   <form id="f">
     <input id="amount" type="number" min="1000" step="500" placeholder="10000" inputmode="numeric" required>
     <button id="go" type="submit">Find trades</button>
@@ -62,7 +66,7 @@
   <div id="out"></div>
 
   <details>
-    <summary>How to place these orders</summary>
+    <summary>How to place swing orders</summary>
     <ol>
       <li>Next market morning, place a <b>limit buy at the "Don't pay above" price</b>. If the stock opens higher, it simply won't fill. That's the plan working, not missing out.</li>
       <li>Once bought, set a <b>GTT OCO</b> (one-cancels-other) with the stop and target as the two triggers.</li>
@@ -70,15 +74,55 @@
       <li>Picks are computed from the last completed session. Use them the next trading day only.</li>
     </ol>
   </details>
-  <small class="foot">Not financial advice. Software that measures how one rule played out historically on NSE data; history isn't a promise. Paper trade first. The first request after idle can take a minute or two (free hosting wakes up, then loads ~200 stocks).</small>
+  <small class="foot">Not financial advice. Software that measures how rules played out historically on NSE data (5 years, today's Nifty 200 members, so results lean optimistic); history isn't a promise. Paper trade first. The first request after idle can take a few minutes (free hosting wakes up, then loads 5 years for ~200 stocks).</small>
 </main>
 <script>
   const out = document.getElementById('out');
   const go = document.getElementById('go');
   const inr = (v, d = 0) => '₹' + Number(v).toLocaleString('en-IN', { minimumFractionDigits: d, maximumFractionDigits: d });
   const px = v => inr(v, 2);
-  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const pct = (v, d = 1) => (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(d) + '%';
+  const cls = v => v >= 0 ? 'pos' : 'neg';
+  const sgnR = v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2) + 'R';
 
+  /* ---------- Momentum ---------- */
+  function momentumSection(m) {
+    if (!m) return '';
+    const head = `<h2 class="section">Momentum portfolio · hold ~1 month</h2>
+      <div class="verdict ${m.recommended ? 'ok' : ''}"><b>${m.recommended ? 'Recommended: ' + m.picks.length + ' stock' + (m.picks.length === 1 ? '' : 's') : 'Not recommended right now'}</b>${esc(m.reason)}</div>`;
+    const picks = m.picks.length ? `<h2>${m.recommended ? 'Buy' : 'What it would buy'} (${inr(m.perPosition)} each, ranked)</h2>
+      <div class="tablewrap"><table>
+        <tr><th>#</th><th>Stock</th><th>Sector</th><th>6 mo</th><th>12 mo</th><th>Last close</th><th>Qty</th><th>Amount</th></tr>
+        ${m.picks.map(x => `<tr><td>${x.rank}</td><td><b>${esc(x.symbol)}</b></td><td>${esc(x.sector)}</td>
+          <td class="${cls(x.return6m)}">${pct(x.return6m, 0)}</td><td class="${cls(x.return12m)}">${pct(x.return12m, 0)}</td>
+          <td>${px(x.lastClose)}</td><td>${x.quantity}</td><td>${inr(x.amount)}</td></tr>`).join('')}
+      </table></div>
+      ${m.recommended ? `<p class="how">${esc(m.howToHold)}</p>` : ''}` : '';
+    const others = m.ranking.filter(x => x.quantity === 0);
+    const ranking = others.length ? `<h2>Next in the ranking</h2>
+      <p class="note">At your next re-check, keep a holding while it's still in the top ${Math.round(m.positions * 2)}.</p>
+      <div class="tablewrap"><table>
+        <tr><th>#</th><th>Stock</th><th>Sector</th><th>6 mo</th><th>12 mo</th><th>Last close</th><th>Note</th></tr>
+        ${others.map(x => `<tr><td>${x.rank}</td><td>${esc(x.symbol)}</td><td>${esc(x.sector)}</td>
+          <td class="${cls(x.return6m)}">${pct(x.return6m, 0)}</td><td class="${cls(x.return12m)}">${pct(x.return12m, 0)}</td>
+          <td>${px(x.lastClose)}</td><td style="text-align:left">${esc(x.note)}</td></tr>`).join('')}
+      </table></div>` : '';
+    const bt = `<h2>How this strategy has done</h2>
+      <p class="note">Monthly rebalance with ${m.positions} stock${m.positions === 1 ? '' : 's'} (what your amount allows), after charges. Last 12 months = since ${esc(m.recentFrom)}. "Worst fall" is the deepest drop from a peak.</p>
+      <div class="tablewrap"><table>
+        <tr><th>Strategy</th><th>Per year</th><th>Worst fall</th><th>Months up</th><th>Earlier, per year</th><th>Last 12 months</th></tr>
+        ${m.backtest.map(r => `<tr><td>${esc(r.name)}</td>
+          <td class="${cls(r.all.annualReturn)}">${pct(r.all.annualReturn)}</td>
+          <td class="neg">−${(r.all.maxDrawdown * 100).toFixed(0)}%</td>
+          <td>${Math.round(r.all.winningShare * 100)}%</td>
+          <td class="${cls(r.earlier.annualReturn)}">${pct(r.earlier.annualReturn)}</td>
+          <td class="${cls(r.recent.totalReturn)}">${pct(r.recent.totalReturn)}</td></tr>`).join('')}
+      </table></div>`;
+    return head + picks + ranking + bt;
+  }
+
+  /* ---------- Swing ---------- */
   function card(p) {
     const t = p.candidate.plan, e = p.candidate.edge;
     const reward = p.quantity * (t.target - t.entry);
@@ -94,24 +138,25 @@
         <div class="cell"><small>Loss at stop</small><span class="neg">−${inr(p.riskRupees)}</span></div>
         <div class="cell"><small>Gain at target</small><span class="pos">+${inr(reward)}</span></div>
         <div class="cell"><small>Win rate (hist.)</small><span>${Math.round(e.winRate * 100)}%</span></div>
-        <div class="cell"><small>Avg per trade, net</small><span class="${expected >= 0 ? 'pos' : 'neg'}">${expected >= 0 ? '+' : '−'}${inr(Math.abs(expected))}</span></div>
+        <div class="cell"><small>Avg per trade, net</small><span class="${cls(expected)}">${expected >= 0 ? '+' : '−'}${inr(Math.abs(expected))}</span></div>
       </div>
-      <div class="hist">Setup: ${esc(t.setupName)} on ${esc(t.signalDate)}. History: ${e.stockTrades} trades on this stock, ${e.poolTrades} across all stocks (blended). Expected ${p.netR >= 0 ? '+' : ''}${p.netR.toFixed(2)}R per trade after charges.</div>
+      <div class="hist">Setup: ${esc(t.setupName)} on ${esc(t.signalDate)}. History: ${e.stockTrades} trades on this stock, ${e.poolTrades} across all stocks (blended). Expected ${sgnR(p.netR)} per trade after charges.</div>
     </div>`;
   }
 
-  const sgnR = v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2) + 'R';
-
   function setupTable(setups) {
     if (!setups || !setups.length) return '';
+    const from = setups[0].recentFrom;
     const rows = setups.map(s => `<tr>
         <td>${esc(s.setup)}</td><td>${s.trades}</td><td>${Math.round(s.winRate * 100)}%</td>
         <td>+${s.avgWinR.toFixed(2)}R</td><td>−${s.avgLossR.toFixed(2)}R</td>
-        <td class="${s.expectancyR >= 0 ? 'pos' : 'neg'}">${sgnR(s.expectancyR)}</td></tr>`).join('');
+        <td class="${cls(s.expectancyR)}">${sgnR(s.expectancyR)}</td>
+        <td class="${cls(s.earlierExpectancyR)}">${sgnR(s.earlierExpectancyR)} <span class="note">(${s.earlierTrades})</span></td>
+        <td class="${cls(s.recentExpectancyR)}">${sgnR(s.recentExpectancyR)} <span class="note">(${s.recentTrades})</span></td></tr>`).join('');
     return `<h2>How each setup has done</h2>
-      <p class="note">Every trade each rule would have taken over the last 3 years across all scanned stocks, before charges (charges cost roughly another 0.03–0.10R per trade).</p>
+      <p class="note">Every trade each rule would have taken over 5 years across all scanned stocks, before charges (charges cost roughly another 0.03–0.10R per trade). A setup is only used if it made money in both the earlier years and the last 12 months (since ${esc(from)}). "+ nifty-uptrend" = only when the Nifty 50 is above its rising 200-day average.</p>
       <div class="tablewrap"><table>
-        <tr><th>Setup</th><th>Trades</th><th>Win rate</th><th>Avg win</th><th>Avg loss</th><th>Per trade</th></tr>${rows}
+        <tr><th>Setup</th><th>Trades</th><th>Win rate</th><th>Avg win</th><th>Avg loss</th><th>Per trade</th><th>Earlier</th><th>Last 12 mo</th></tr>${rows}
       </table></div>`;
   }
 
@@ -131,10 +176,24 @@
       }).join('');
   }
 
+  function swingSection(s) {
+    if (!s) return '';
+    const head = `<h2 class="section">Swing trades · hold up to 3 weeks</h2>`;
+    if (!s.trade) {
+      return head + `<div class="verdict"><b>No trade today.</b>${esc(s.reason)} (${s.stocksScanned} stocks scanned)</div>`
+        + otherOptions(s.considered) + setupTable(s.setups);
+    }
+    const risk = s.picks.reduce((a, p) => a + p.riskRupees, 0);
+    return head + `<div class="verdict ok"><b>${s.picks.length} pick${s.picks.length > 1 ? 's' : ''}, best first</b>${esc(s.reason)} (${s.stocksScanned} stocks scanned)</div>`
+      + s.picks.map(card).join('')
+      + `<div class="totals">Invested ≈ ${inr(s.investedAmount)} · Unused ${inr(s.unusedAmount)} · If every stop hits: −${inr(risk)} (plus charges)</div>`
+      + otherOptions(s.considered) + setupTable(s.setups);
+  }
+
   document.getElementById('f').addEventListener('submit', async (ev) => {
     ev.preventDefault();
     go.disabled = true;
-    out.innerHTML = '<div class="status">Scanning stocks and replaying 3 years of history… (first run of the day can take 1–2 min)</div>';
+    out.innerHTML = '<div class="status">Scanning ~200 stocks and replaying 5 years of history… (first run after a restart can take a few minutes)</div>';
     try {
       const res = await fetch('/api/recommend', {
         method: 'POST',
@@ -144,15 +203,8 @@
       const body = await res.json();
       if (!res.ok) {
         out.innerHTML = `<div class="verdict"><b>Couldn't get an answer (HTTP ${res.status})</b>${esc(body.marketDataError || body.error || body.pending || JSON.stringify(body))}</div>`;
-      } else if (!body.trade) {
-        out.innerHTML = `<div class="verdict"><b>No trade today.</b>${esc(body.reason)} (${body.stocksScanned} stocks scanned)</div>`
-          + otherOptions(body.considered) + setupTable(body.setups);
       } else {
-        const risk = body.picks.reduce((s, p) => s + p.riskRupees, 0);
-        out.innerHTML = `<div class="verdict"><b>${body.picks.length} pick${body.picks.length > 1 ? 's' : ''}, best first</b>${esc(body.reason)} (${body.stocksScanned} stocks scanned)</div>`
-          + body.picks.map(card).join('')
-          + `<div class="totals">Invested ≈ ${inr(body.investedAmount)} · Unused ${inr(body.unusedAmount)} · If every stop hits: −${inr(risk)} (plus charges)</div>`
-          + otherOptions(body.considered) + setupTable(body.setups);
+        out.innerHTML = momentumSection(body.momentum) + swingSection(body.swing);
       }
     } catch (err) {
       out.innerHTML = `<div class="verdict"><b>Request failed</b>${esc(err)}</div>`;

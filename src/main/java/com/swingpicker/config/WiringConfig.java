@@ -5,12 +5,16 @@ import com.swingpicker.core.BreakoutSetup;
 import com.swingpicker.core.CostModel;
 import com.swingpicker.core.ExpectedNetRRanker;
 import com.swingpicker.core.MarketDataProvider;
+import com.swingpicker.core.MarketRegime;
 import com.swingpicker.core.NseDeliveryCostModel;
 import com.swingpicker.core.RecommendationService;
+import com.swingpicker.core.RegimeFilteredSetup;
+import com.swingpicker.core.Setup;
 import com.swingpicker.core.RecommendationService.Rules;
 import com.swingpicker.core.RiskBasedPositionSizer;
 import com.swingpicker.core.RiskBasedPositionSizer.Limits;
 import com.swingpicker.core.TrendPullbackSetup;
+import com.swingpicker.core.momentum.MomentumService;
 import com.swingpicker.data.CachingMarketDataProvider;
 import com.swingpicker.data.UniverseLoader;
 import com.swingpicker.data.UniverseLoader.Universe;
@@ -38,13 +42,20 @@ public class WiringConfig {
     private static final Logger log = LoggerFactory.getLogger(WiringConfig.class);
 
     /** How the whole pipeline behaves. Change numbers here, not in the core. */
-    static final int HISTORY_YEARS = 3;
+    static final int HISTORY_YEARS = 5;     // momentum needs 1 year of lookback before its test starts
     static final Rules RULES = new Rules(
             0.10,   // a pick must expect > +0.10R per trade after costs
             30,     // and the setup must have >= 30 historical trades across the universe
             2,      // at most 2 picks per industry
             HISTORY_YEARS,
-            8);     // parallel Yahoo fetches
+            8,      // parallel Yahoo fetches
+            true);  // a setup must have made money both in earlier years and in the last 12 months
+    static final MomentumService.Config MOMENTUM = new MomentumService.Config(
+            5000,   // smallest position worth buying (DP charge is 0.3% of ₹5,000)
+            10,     // at most 10 stocks
+            21,     // re-check about monthly
+            2.0,    // keep a holding while it ranks within 2x the number held
+            HISTORY_YEARS);
     static final Limits LIMITS = new Limits(
             0.02,   // risk 2% of the entered amount per stock
             0.35,   // no stock takes more than 35% of the amount
@@ -85,11 +96,27 @@ public class WiringConfig {
     }
 
     @Bean
+    public MarketRegime marketRegime(MarketDataProvider data) {
+        return new MarketRegime(data, HISTORY_YEARS);
+    }
+
+    /** Swing setups: each one plain and with the Nifty uptrend filter, so the table shows what the filter changes. */
+    @Bean
     public RecommendationService recommendationService(Universe universe, MarketDataProvider data,
-                                                       CostModel costs, Clock clock) {
+                                                       CostModel costs, MarketRegime regime, Clock clock) {
         var edges = new BacktestEdgeEstimator(universe.stocks(), data, HISTORY_YEARS, PRIOR_TRADES,
                 Duration.ofHours(6), clock);
-        return new RecommendationService(universe.stocks(), List.of(new TrendPullbackSetup(), new BreakoutSetup()), data, edges,
+        Setup pullback = new TrendPullbackSetup();
+        Setup breakout = new BreakoutSetup();
+        List<Setup> setups = List.of(new RegimeFilteredSetup(pullback, regime), new RegimeFilteredSetup(breakout, regime),
+                pullback, breakout);
+        return new RecommendationService(universe.stocks(), setups, data, edges,
                 costs, new ExpectedNetRRanker(), new RiskBasedPositionSizer(costs, LIMITS), RULES);
+    }
+
+    @Bean
+    public MomentumService momentumService(Universe universe, MarketDataProvider data, MarketRegime regime,
+                                           CostModel costs) {
+        return new MomentumService(universe.stocks(), data, regime, costs, MOMENTUM);
     }
 }

@@ -7,6 +7,7 @@ import com.swingpicker.domain.Bar;
 import com.swingpicker.domain.Considered;
 import com.swingpicker.domain.Edge;
 import com.swingpicker.domain.Recommendation;
+import com.swingpicker.domain.SetupRecord;
 import com.swingpicker.domain.TradePlan;
 import org.junit.jupiter.api.Test;
 
@@ -47,9 +48,10 @@ class RecommendationServiceTest {
                 return new Edge(winRateBySymbol.get(symbol), 2.0, 1.0, 10, pool);
             }
 
-            public Edge pool(Setup setup) {
+            public SetupRecord record(Setup setup) {
                 int pool = poolBySetup.get(setup.name());
-                return new Edge(0.45, 2.0, 1.0, pool, pool);
+                return new SetupRecord(setup.name(), pool, 0.45, 2.0, 1.0, 0.35, pool / 2, 0.30, pool / 2, 0.40,
+                        LocalDate.of(2025, 10, 28));
             }
         };
     }
@@ -71,7 +73,7 @@ class RecommendationServiceTest {
         CostModel costs = new NseDeliveryCostModel();
         RecommendationService svc = new RecommendationService(uni, List.of(pullback, breakout), (s, y) -> ONE_BAR,
                 edges(p, Map.of("pullback", 400, "breakout", 12)), costs, new ExpectedNetRRanker(),
-                new RiskBasedPositionSizer(costs, new Limits(0.02, 0.35, 10, 0.10)), new Rules(0.10, 30, 2, 3, 2));
+                new RiskBasedPositionSizer(costs, new Limits(0.02, 0.35, 10, 0.10)), new Rules(0.10, 30, 2, 3, 2, true));
 
         Recommendation r = svc.recommend(30_000);
 
@@ -97,7 +99,7 @@ class RecommendationServiceTest {
         CostModel costs = new NseDeliveryCostModel();
         RecommendationService svc = new RecommendationService(uni, List.of(a, b), (s, y) -> ONE_BAR,
                 edges(Map.of("DUAL", 0.5), Map.of("a", 100, "b", 100)), costs, new ExpectedNetRRanker(),
-                new RiskBasedPositionSizer(costs, new Limits(0.02, 0.35, 10, 0.10)), new Rules(0.10, 30, 2, 3, 2));
+                new RiskBasedPositionSizer(costs, new Limits(0.02, 0.35, 10, 0.10)), new Rules(0.10, 30, 2, 3, 2, true));
 
         Recommendation r = svc.recommend(30_000);
 
@@ -112,7 +114,7 @@ class RecommendationServiceTest {
         RecommendationService svc = new RecommendationService(uni, List.of(firing("pullback", Set.of("WEAK"))),
                 (s, y) -> ONE_BAR, edges(Map.of("WEAK", 0.30), Map.of("pullback", 400)), costs,
                 new ExpectedNetRRanker(), new RiskBasedPositionSizer(costs, new Limits(0.02, 0.35, 10, 0.10)),
-                new Rules(0.10, 30, 2, 3, 2));
+                new Rules(0.10, 30, 2, 3, 2, true));
 
         Recommendation r = svc.recommend(10_000);
 
@@ -120,5 +122,29 @@ class RecommendationServiceTest {
         assertEquals(1, r.considered().size());
         assertTrue(r.considered().get(0).status().startsWith("History too weak"));
         assertEquals(1, r.setups().size());
+    }
+
+    @Test
+    void setupThatLostMoneyInTheLast12MonthsIsBlocked() {
+        List<Stock> uni = List.of(new Stock("GOOD", "IT"));
+        EdgeEstimator fadingEdge = new EdgeEstimator() {
+            public Edge estimate(Setup setup, String symbol) {
+                return new Edge(0.5, 2.0, 1.0, 10, 400);
+            }
+
+            public SetupRecord record(Setup setup) {
+                return new SetupRecord(setup.name(), 400, 0.45, 2.0, 1.0, 0.20, 300, 0.40, 100, -0.30,
+                        LocalDate.of(2025, 10, 28));
+            }
+        };
+        CostModel costs = new NseDeliveryCostModel();
+        RecommendationService svc = new RecommendationService(uni, List.of(firing("pullback", Set.of("GOOD"))),
+                (s, y) -> ONE_BAR, fadingEdge, costs, new ExpectedNetRRanker(),
+                new RiskBasedPositionSizer(costs, new Limits(0.02, 0.35, 10, 0.10)), new Rules(0.10, 30, 2, 3, 2, true));
+
+        Recommendation r = svc.recommend(30_000);
+
+        assertFalse(r.trade());
+        assertTrue(r.considered().get(0).status().contains("both periods"), r.considered().get(0).status());
     }
 }

@@ -4,6 +4,7 @@ import com.swingpicker.core.BacktestEdgeEstimator.Trade;
 import com.swingpicker.core.RecommendationService.Stock;
 import com.swingpicker.domain.Bar;
 import com.swingpicker.domain.Edge;
+import com.swingpicker.domain.SetupRecord;
 import com.swingpicker.domain.TradePlan;
 import org.junit.jupiter.api.Test;
 
@@ -16,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -98,6 +100,58 @@ class BacktestEdgeEstimatorTest {
     void notEnoughFutureDropsTheTrade() {
         List<Bar> bars = days(new double[]{100, 104, 99, 103}, new double[]{103, 108, 102, 107});
         assertTrue(BacktestEdgeEstimator.replay(ONCE, "X", bars).isEmpty());
+    }
+
+    /** Flat 100 for two years, except a +12 jump after each listed day: any setup entering there hits a 110 target. */
+    static List<Bar> twoYears(Set<Integer> winDays) {
+        List<Bar> bars = new ArrayList<>();
+        LocalDate d = LocalDate.of(2024, 11, 1);
+        for (int k = 0; k < 730; k++) {
+            boolean pop = winDays.contains(k - 2);
+            bars.add(new Bar(d.plusDays(k), 100, pop ? 112 : 100.5, pop ? 99.5 : 99.5, pop ? 111 : 100, 1));
+        }
+        return bars;
+    }
+
+    /** Fires on the given bar indexes with entry 100, stop 95, target 110, hold 3. */
+    static Setup firesOn(String name, Set<Integer> days) {
+        return new Setup() {
+            public String name() {
+                return name;
+            }
+
+            public Optional<TradePlan> detect(String symbol, List<Bar> bars) {
+                return days.contains(bars.size() - 1)
+                        ? Optional.of(new TradePlan(symbol, name, null, 100, 95, 110, 101, 3))
+                        : Optional.empty();
+            }
+        };
+    }
+
+    @Test
+    void eachSetupGetsItsOwnStatsSplitIntoEarlierAndLast12Months() {
+        // Setup A: one win early (day 100), one flat time exit late (day 600).
+        // Setup B: three flat time exits, all early. Same stock, same data.
+        List<Bar> bars = twoYears(Set.of(100));
+        MarketDataProvider fake = (symbol, years) -> bars;
+        Clock clock = Clock.fixed(Instant.parse("2026-11-04T10:00:00Z"), ZoneOffset.UTC);
+        BacktestEdgeEstimator est = new BacktestEdgeEstimator(List.of(new Stock("X", "x")), fake, 5, 20,
+                Duration.ofHours(6), clock);
+
+        SetupRecord a = est.record(firesOn("A", Set.of(100, 600)));
+        SetupRecord b = est.record(firesOn("B", Set.of(10, 50, 200)));
+
+        assertEquals(2, a.trades());
+        assertEquals(1, a.earlierTrades());
+        assertEquals(1, a.recentTrades());
+        assertEquals(2.0, a.earlierExpectancyR(), 1e-9);
+        assertEquals(0.0, a.recentExpectancyR(), 1e-9);
+        assertEquals(bars.get(729).date().minusYears(1), a.recentFrom());
+
+        assertEquals(3, b.trades());
+        assertEquals(0, b.recentTrades());
+        assertEquals(0.0, b.expectancyR(), 1e-9);
+        assertTrue(a.expectancyR() != b.expectancyR() && a.avgWinR() != b.avgWinR());
     }
 
     @Test

@@ -38,9 +38,11 @@ public class RecommendationService {
      * @param maxPerSector     at most this many picks from one sector
      * @param historyYears     how much daily history to load
      * @param fetchThreads     parallel market-data fetches
+     * @param requireBothPeriodsPositive a setup's signals count only if it made money (before charges) both in
+     *                                   the earlier years and in the last 12 months
      */
     public record Rules(double minExpectedNetR, int minPoolTrades, int maxPerSector, int historyYears,
-                        int fetchThreads) {
+                        int fetchThreads, boolean requireBothPeriodsPositive) {
     }
 
     private final List<Stock> universe;
@@ -72,7 +74,9 @@ public class RecommendationService {
 
         Map<Stock, List<Bar>> bars = fetchAll();
         int scanned = bars.size();
-        List<SetupRecord> records = setups.stream().map(s -> SetupRecord.of(s.name(), edges.pool(s))).toList();
+        Map<String, SetupRecord> recordBySetup = new LinkedHashMap<>();
+        setups.forEach(s -> recordBySetup.put(s.name(), edges.record(s)));
+        List<SetupRecord> records = List.copyOf(recordBySetup.values());
 
         // 1. Every stock where some setup fired on the latest bar, scored after costs.
         //    Each one gets a status; anything not picked says why.
@@ -87,9 +91,15 @@ public class RecommendationService {
                 Edge edge = edges.estimate(setup, stock.symbol());
                 double score = ranker.expectedNetR(edge, costInR(plan.get()));
                 Candidate c = new Candidate(plan.get(), stock.sector(), edge, score);
+                SetupRecord rec = recordBySetup.get(setup.name());
                 if (edge.poolTrades() < rules.minPoolTrades()) {
                     status.put(c, "This setup has too little history to trust (" + edge.poolTrades()
                             + " past trades, needs " + rules.minPoolTrades() + ")");
+                } else if (rules.requireBothPeriodsPositive()
+                        && (rec.earlierExpectancyR() <= 0 || rec.recentExpectancyR() <= 0)) {
+                    status.put(c, String.format("This setup didn't make money in both periods "
+                                    + "(earlier years %+.2fR, last 12 months %+.2fR per trade, before charges)",
+                            rec.earlierExpectancyR(), rec.recentExpectancyR()));
                 } else if (score <= rules.minExpectedNetR()) {
                     status.put(c, String.format("History too weak: %+.2fR per trade after charges (needs above %+.2fR)",
                             score, rules.minExpectedNetR()));

@@ -3,11 +3,13 @@ package com.swingpicker.core;
 import com.swingpicker.core.RecommendationService.Stock;
 import com.swingpicker.domain.Bar;
 import com.swingpicker.domain.Edge;
+import com.swingpicker.domain.SetupRecord;
 import com.swingpicker.domain.TradePlan;
 
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -34,10 +36,10 @@ import java.util.Optional;
 public class BacktestEdgeEstimator implements EdgeEstimator {
 
     /** One completed historical trade. */
-    public record Trade(String symbol, int signalIndex, double r) {
+    public record Trade(String symbol, LocalDate signalDate, double r) {
     }
 
-    private record Stats(int n, int wins, double sumWinR, double sumLossR) {
+    record Stats(int n, int wins, double sumWinR, double sumLossR) {
         static Stats of(List<Trade> trades) {
             int wins = 0;
             double sw = 0;
@@ -52,9 +54,27 @@ public class BacktestEdgeEstimator implements EdgeEstimator {
             }
             return new Stats(trades.size(), wins, sw, sl);
         }
+
+        double winRate() {
+            return n == 0 ? 0 : (double) wins / n;
+        }
+
+        double avgWin() {
+            return wins == 0 ? 0 : sumWinR / wins;
+        }
+
+        double avgLoss() {
+            return n - wins == 0 ? 0 : sumLossR / (n - wins);
+        }
+
+        /** Mean R per trade. */
+        double expectancy() {
+            return n == 0 ? 0 : (sumWinR - sumLossR) / n;
+        }
     }
 
-    private record Memo(Instant at, Stats pool, Map<String, Stats> byStock) {
+    private record Memo(Instant at, Stats pool, Stats earlier, Stats recent, LocalDate recentFrom,
+                        Map<String, Stats> byStock) {
     }
 
     private final List<Stock> universe;
@@ -76,25 +96,11 @@ public class BacktestEdgeEstimator implements EdgeEstimator {
     }
 
     @Override
-    public synchronized Edge pool(Setup setup) {
-        Stats pool = memoFor(setup).pool();
-        if (pool.n() == 0) {
-            return new Edge(0, 0, 0, 0, 0);
-        }
-        int losses = pool.n() - pool.wins();
-        return new Edge((double) pool.wins() / pool.n(),
-                pool.wins() == 0 ? 0 : pool.sumWinR() / pool.wins(),
-                losses == 0 ? 0 : pool.sumLossR() / losses,
-                pool.n(), pool.n());
-    }
-
-    private Memo memoFor(Setup setup) {
-        Memo m = memo.get(setup.name());
-        if (m == null || m.at().plus(ttl).isBefore(clock.instant())) {
-            m = build(setup);
-            memo.put(setup.name(), m);
-        }
-        return m;
+    public synchronized SetupRecord record(Setup setup) {
+        Memo m = memoFor(setup);
+        Stats p = m.pool();
+        return new SetupRecord(setup.name(), p.n(), p.winRate(), p.avgWin(), p.avgLoss(), p.expectancy(),
+                m.earlier().n(), m.earlier().expectancy(), m.recent().n(), m.recent().expectancy(), m.recentFrom());
     }
 
     @Override
@@ -106,23 +112,29 @@ public class BacktestEdgeEstimator implements EdgeEstimator {
         }
         Stats s = m.byStock().getOrDefault(symbol, new Stats(0, 0, 0, 0));
 
-        double poolP = (double) pool.wins() / pool.n();
-        double poolWin = pool.wins() == 0 ? 0 : pool.sumWinR() / pool.wins();
-        int poolLosses = pool.n() - pool.wins();
-        double poolLoss = poolLosses == 0 ? 0 : pool.sumLossR() / poolLosses;
-
+        double poolP = pool.winRate();
         // Blend: the universe acts like `priorTrades` extra trades on this stock.
         double p = (s.wins() + priorTrades * poolP) / (s.n() + priorTrades);
         double winPrior = priorTrades * poolP;
         double lossPrior = priorTrades * (1 - poolP);
-        double avgWin = (s.sumWinR() + winPrior * poolWin) / (s.wins() + winPrior);
-        double avgLoss = (s.sumLossR() + lossPrior * poolLoss) / ((s.n() - s.wins()) + lossPrior);
+        double avgWin = (s.sumWinR() + winPrior * pool.avgWin()) / (s.wins() + winPrior);
+        double avgLoss = (s.sumLossR() + lossPrior * pool.avgLoss()) / ((s.n() - s.wins()) + lossPrior);
         return new Edge(p, avgWin, avgLoss, s.n(), pool.n());
+    }
+
+    private Memo memoFor(Setup setup) {
+        Memo m = memo.get(setup.name());
+        if (m == null || m.at().plus(ttl).isBefore(clock.instant())) {
+            m = build(setup);
+            memo.put(setup.name(), m);
+        }
+        return m;
     }
 
     private Memo build(Setup setup) {
         List<Trade> all = new ArrayList<>();
         Map<String, Stats> byStock = new HashMap<>();
+        LocalDate latest = LocalDate.MIN;
         for (Stock stock : universe) {
             List<Bar> bars;
             try {
@@ -132,11 +144,17 @@ public class BacktestEdgeEstimator implements EdgeEstimator {
             } catch (RuntimeException e) {
                 continue; // a stock we can't load just doesn't contribute history
             }
+            if (!bars.isEmpty() && bars.get(bars.size() - 1).date().isAfter(latest)) {
+                latest = bars.get(bars.size() - 1).date();
+            }
             List<Trade> trades = replay(setup, stock.symbol(), bars);
             all.addAll(trades);
             byStock.put(stock.symbol(), Stats.of(trades));
         }
-        return new Memo(clock.instant(), Stats.of(all), byStock);
+        LocalDate recentFrom = latest.equals(LocalDate.MIN) ? LocalDate.MIN : latest.minusYears(1);
+        List<Trade> earlier = all.stream().filter(t -> t.signalDate().isBefore(recentFrom)).toList();
+        List<Trade> recent = all.stream().filter(t -> !t.signalDate().isBefore(recentFrom)).toList();
+        return new Memo(clock.instant(), Stats.of(all), Stats.of(earlier), Stats.of(recent), recentFrom, byStock);
     }
 
     /** All completed, non-overlapping trades the setup would have taken on this stock. */
@@ -183,7 +201,7 @@ public class BacktestEdgeEstimator implements EdgeEstimator {
                     break;
                 }
             }
-            trades.add(new Trade(symbol, i, (exit - entry) / risk));
+            trades.add(new Trade(symbol, bars.get(i).date(), (exit - entry) / risk));
             i = exitDay + 1;
         }
         return trades;
