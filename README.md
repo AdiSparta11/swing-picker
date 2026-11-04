@@ -24,7 +24,7 @@ domain/     records: Bar, TradePlan, Edge, Candidate, Pick, Recommendation
 
 `RecommendationService.recommend(amount)`:
 
-1. For each stock in `universe.csv`, run each `Setup` on daily bars; keep the ones that fired today.
+1. For each stock in the Nifty 200 (`nifty200.csv`, NSE's file), run each `Setup` on daily bars; keep the ones that fired today.
 2. Score each by **expected net R** (`Ranker`), using the setup's historical `Edge` and variable costs in R.
 3. Drop scores below `minExpectedNetR`, sort best first, cap picks per sector.
 4. `PositionSizer` turns them into whole-share quantities within the amount; fixed per-stock costs decide if a position is too small to be worth it.
@@ -34,7 +34,7 @@ domain/     records: Bar, TradePlan, Edge, Candidate, Pick, Recommendation
 
 | Piece | Choice |
 |---|---|
-| Universe | Nifty 200 from NSE at startup (falls back to bundled Nifty 50). Check: `GET /api/universe` |
+| Universe | Nifty 200 from NSE's constituent file, bundled as `src/main/resources/nifty200.csv` (NSE blocks cloud servers). Replace it after each rebalance (end of March and September). Check: `GET /api/universe` |
 | Data | Yahoo `.NS` daily bars, 3 years, split/dividend adjusted, completed sessions only. Check: `GET /api/bars/RELIANCE` |
 | Setups | **Trend pullback:** uptrend (close > SMA200, SMA50 > SMA200 and rising), dip to SMA20 in last 5 sessions, turn = close above SMA20 and yesterday's high. **55-day breakout:** close > SMA200, close above the prior 55-day high on ≥1.5× 20-day volume, close in top 25% of the day's range, not more than 3 ATR above SMA20 |
 | Transparency | Every run returns all stocks that fired with the reason each was or wasn't picked, plus each setup's 3-year track record |

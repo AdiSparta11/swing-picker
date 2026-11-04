@@ -26,6 +26,19 @@ class UniverseLoaderTest {
     }
 
     @Test
+    void bundledNifty200FileIsCompleteAndParses() throws Exception {
+        String csv = java.nio.file.Files.readString(java.nio.file.Path.of("src/main/resources/nifty200.csv"));
+
+        List<Stock> stocks = UniverseLoader.parseNseConstituents(csv);
+
+        assertEquals(200, stocks.size());
+        assertEquals(200, stocks.stream().map(Stock::symbol).distinct().count());
+        assertEquals(true, stocks.contains(new Stock("M&M", "Automobile and Auto Components")));
+        assertEquals(true, stocks.contains(new Stock("RELIANCE", "Oil Gas & Consumable Fuels")));
+        assertEquals(true, stocks.stream().noneMatch(s -> s.symbol().isBlank() || s.sector().isBlank()));
+    }
+
+    @Test
     void parsesBundledList() {
         assertEquals(List.of(new Stock("TCS", "IT"), new Stock("ITC", "FMCG")),
                 UniverseLoader.parseBundled("symbol,sector\nTCS,IT\nITC,FMCG\n\n"));

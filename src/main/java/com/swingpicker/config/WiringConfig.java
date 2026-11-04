@@ -67,7 +67,7 @@ public class WiringConfig {
 
     @Bean
     public Universe universe(HttpClient http) throws IOException {
-        String bundled = new ClassPathResource("universe.csv").getContentAsString(StandardCharsets.UTF_8);
+        String bundled = new ClassPathResource("nifty200.csv").getContentAsString(StandardCharsets.UTF_8);
         Universe u = UniverseLoader.load(http, UniverseLoader.NIFTY_200_URLS, bundled);
         log.info("Universe: {} stocks from {}", u.stocks().size(), u.source());
         return u;

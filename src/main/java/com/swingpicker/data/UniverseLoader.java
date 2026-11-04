@@ -12,7 +12,9 @@ import java.util.List;
 
 /**
  * The list of stocks to scan. Tries NSE's official index-constituent CSVs (current list, with industry),
- * and falls back to a bundled list if they can't be reached.
+ * and falls back to the copy of that same file bundled in resources (nifty200.csv). NSE blocks most cloud
+ * servers, so on Render the bundled copy is normal. Refresh it after each rebalance (end of March and September):
+ * download https://www.niftyindices.com/IndexConstituent/ind_nifty200list.csv and replace the file.
  */
 public final class UniverseLoader {
 
@@ -50,7 +52,8 @@ public final class UniverseLoader {
                 // try the next source
             }
         }
-        return new Universe(parseBundled(bundledCsv), "bundled universe.csv (NSE list unreachable)");
+        return new Universe(parseNseConstituents(bundledCsv),
+                "bundled nifty200.csv (NSE's file, shipped with the app; live NSE list unreachable)");
     }
 
     /** NSE format: Company Name,Industry,Symbol,Series,ISIN Code. Only EQ-series rows are kept. */
