@@ -22,6 +22,9 @@
   .verdict { margin-top:20px; padding:14px 16px; border-radius:10px; border:1px solid var(--line); background:var(--card); }
   .verdict b { display:block; font-size:18px; margin-bottom:2px; }
   .verdict.ok { border-color:var(--good); }
+  .session { margin-top:20px; padding:10px 14px; border-radius:10px; border:1px dashed var(--line); font-size:14px; }
+  .session b { margin-right:6px; }
+  .live-dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--good); margin-right:6px; vertical-align:middle; }
   h2.section { font-size:20px; margin:36px 0 2px; padding-top:20px; border-top:1px solid var(--line); }
   h2.section:first-of-type { border-top:0; padding-top:0; }
   p.how { font-size:14px; margin:10px 0 0; }
@@ -86,6 +89,11 @@
   const cls = v => v >= 0 ? 'pos' : 'neg';
   const sgnR = v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2) + 'R';
 
+  function sessionBanner(x) {
+    if (!x) return '';
+    return `<div class="session">${x.live ? '<span class="live-dot"></span><b>Live</b>' : '<b>Next session</b>'}${esc(x.checkedAt)} · ${esc(x.message)}</div>`;
+  }
+
   /* ---------- Momentum ---------- */
   function momentumSection(m) {
     if (!m) return '';
@@ -93,7 +101,7 @@
       <div class="verdict ${m.recommended ? 'ok' : ''}"><b>${m.recommended ? 'Recommended: ' + m.picks.length + ' stock' + (m.picks.length === 1 ? '' : 's') : 'Not recommended right now'}</b>${esc(m.reason)}</div>`;
     const picks = m.picks.length ? `<h2>${m.recommended ? 'Buy' : 'What it would buy'} (${inr(m.perPosition)} each, ranked)</h2>
       <div class="tablewrap"><table>
-        <tr><th>#</th><th>Stock</th><th>Sector</th><th>6 mo</th><th>12 mo</th><th>Last close</th><th>Qty</th><th>Amount</th></tr>
+        <tr><th>#</th><th>Stock</th><th>Sector</th><th>6 mo</th><th>12 mo</th><th>${m.livePrices ? 'Live price' : 'Last close'}</th><th>Qty</th><th>Amount</th></tr>
         ${m.picks.map(x => `<tr><td>${x.rank}</td><td><b>${esc(x.symbol)}</b></td><td>${esc(x.sector)}</td>
           <td class="${cls(x.return6m)}">${pct(x.return6m, 0)}</td><td class="${cls(x.return12m)}">${pct(x.return12m, 0)}</td>
           <td>${px(x.lastClose)}</td><td>${x.quantity}</td><td>${inr(x.amount)}</td></tr>`).join('')}
@@ -103,7 +111,7 @@
     const ranking = others.length ? `<h2>Next in the ranking</h2>
       <p class="note">At your next re-check, keep a holding while it's still in the top ${Math.round(m.positions * 2)}.</p>
       <div class="tablewrap"><table>
-        <tr><th>#</th><th>Stock</th><th>Sector</th><th>6 mo</th><th>12 mo</th><th>Last close</th><th>Note</th></tr>
+        <tr><th>#</th><th>Stock</th><th>Sector</th><th>6 mo</th><th>12 mo</th><th>${m.livePrices ? 'Live price' : 'Last close'}</th><th>Note</th></tr>
         ${others.map(x => `<tr><td>${x.rank}</td><td>${esc(x.symbol)}</td><td>${esc(x.sector)}</td>
           <td class="${cls(x.return6m)}">${pct(x.return6m, 0)}</td><td class="${cls(x.return12m)}">${pct(x.return12m, 0)}</td>
           <td>${px(x.lastClose)}</td><td style="text-align:left">${esc(x.note)}</td></tr>`).join('')}
@@ -176,15 +184,16 @@
       }).join('');
   }
 
-  function swingSection(s) {
+  function swingSection(s, session) {
     if (!s) return '';
-    const head = `<h2 class="section">Swing trades · hold up to 3 weeks</h2>`;
+    const head = `<h2 class="section">Swing trades · hold up to 3 weeks</h2>`
+      + (session && session.live ? `<p class="note">Live: signals use today's price so far. They count only if they still hold at the 3:30 close.</p>` : '');
     if (!s.trade) {
       return head + `<div class="verdict"><b>No trade today.</b>${esc(s.reason)} (${s.stocksScanned} stocks scanned)</div>`
         + otherOptions(s.considered) + setupTable(s.setups);
     }
     const risk = s.picks.reduce((a, p) => a + p.riskRupees, 0);
-    return head + `<div class="verdict ok"><b>${s.picks.length} pick${s.picks.length > 1 ? 's' : ''}, best first</b>${esc(s.reason)} (${s.stocksScanned} stocks scanned)</div>`
+    return head + `<div class="verdict ok"><b>${s.picks.length} ${session && session.live ? 'provisional ' : ''}pick${s.picks.length > 1 ? 's' : ''}, best first</b>${esc(s.reason)} (${s.stocksScanned} stocks scanned)</div>`
       + s.picks.map(card).join('')
       + `<div class="totals">Invested ≈ ${inr(s.investedAmount)} · Unused ${inr(s.unusedAmount)} · If every stop hits: −${inr(risk)} (plus charges)</div>`
       + otherOptions(s.considered) + setupTable(s.setups);
@@ -204,7 +213,7 @@
       if (!res.ok) {
         out.innerHTML = `<div class="verdict"><b>Couldn't get an answer (HTTP ${res.status})</b>${esc(body.marketDataError || body.error || body.pending || JSON.stringify(body))}</div>`;
       } else {
-        out.innerHTML = momentumSection(body.momentum) + swingSection(body.swing);
+        out.innerHTML = sessionBanner(body.session) + momentumSection(body.momentum) + swingSection(body.swing, body.session);
       }
     } catch (err) {
       out.innerHTML = `<div class="verdict"><b>Request failed</b>${esc(err)}</div>`;

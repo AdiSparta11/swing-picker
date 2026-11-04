@@ -12,6 +12,7 @@ import java.util.List;
  *                     stocks equally, both over the whole test and in the last 12 months
  * @param picks        what to buy now (sized), best first; listed even when not recommended, for information
  * @param ranking      the top of the current ranking, used to decide what to keep at the next re-check
+ * @param livePrices   true while the market is open: today's ranking and prices use the live price
  * @param backtest     strategy variants and benchmarks, overall / earlier / last 12 months
  */
 public record MomentumResult(
@@ -19,6 +20,7 @@ public record MomentumResult(
         String reason,
         Boolean niftyUptrend,
         LocalDate asOf,
+        boolean livePrices,
         int positions,
         double perPosition,
         List<MomentumStock> picks,

@@ -1,6 +1,7 @@
 package com.swingpicker.core.momentum;
 
 import com.swingpicker.core.CostModel;
+import com.swingpicker.core.LiveSession;
 import com.swingpicker.core.MarketDataProvider;
 import com.swingpicker.core.MarketRegime;
 import com.swingpicker.core.RecommendationService.Stock;
@@ -19,6 +20,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Function;
 
 /**
@@ -45,9 +49,17 @@ public class MomentumService {
     private final MarketRegime regime;
     private final CostModel costs;
     private final Config config;
+    private final LiveSession session;
 
     public MomentumService(List<Stock> universe, MarketDataProvider data, MarketRegime regime, CostModel costs,
                            Config config) {
+        this(universe, data, regime, costs, config, LiveSession.closed());
+    }
+
+    /** With a live session, today's ranking uses live prices while the market is open. Backtests never do. */
+    public MomentumService(List<Stock> universe, MarketDataProvider data, MarketRegime regime, CostModel costs,
+                           Config config, LiveSession session) {
+        this.session = session;
         this.universe = List.copyOf(universe);
         this.data = data;
         this.regime = regime;
@@ -63,19 +75,10 @@ public class MomentumService {
         double perPosition = amount / n;
         int maxPerSector = Math.max(1, (int) Math.ceil(n * 0.3));
 
+        // Completed bars feed the backtest; completed + today's live bar (market hours only) feed today's ranking.
         Map<String, List<Bar>> bars = new LinkedHashMap<>();
-        for (Stock s : universe) {
-            try {
-                List<Bar> b = data.dailyBars(s.symbol(), config.historyYears());
-                if (!b.isEmpty()) {
-                    bars.put(s.symbol(), b);
-                }
-            } catch (UnsupportedOperationException e) {
-                throw e;
-            } catch (RuntimeException e) {
-                // a stock we can't load is simply not ranked
-            }
-        }
+        Map<String, List<Bar>> rankBars = new LinkedHashMap<>();
+        fetchAll(bars, rankBars);
         List<Bar> nifty;
         try {
             nifty = data.dailyBars(MarketRegime.NIFTY, config.historyYears());
@@ -102,11 +105,13 @@ public class MomentumService {
                 row("All " + bars.size() + " stocks, equal weight", filtered, Period::equalWeight, recentFrom),
                 row("Nifty 50 index", filtered, Period::nifty, recentFrom));
 
-        // Today's ranking, from each stock's latest bar on the latest Nifty session.
-        LocalDate asOf = nifty.isEmpty() ? latestDate(bars) : nifty.get(nifty.size() - 1).date();
+        // Today's ranking: every stock whose latest bar is on the most common latest date
+        // (stocks with stale data, e.g. suspended, are left out rather than ranked on old prices).
+        LocalDate asOf = commonLatestDate(rankBars);
+        boolean live = session.isOpen() && asOf != null && asOf.equals(session.now().toLocalDate());
         List<Scored> scored = new ArrayList<>();
         for (Stock s : universe) {
-            List<Bar> b = bars.get(s.symbol());
+            List<Bar> b = rankBars.get(s.symbol());
             if (b == null || !b.get(b.size() - 1).date().equals(asOf)) {
                 continue;
             }
@@ -149,7 +154,9 @@ public class MomentumService {
         String reason;
         boolean recommended = false;
         if (picks.isEmpty()) {
-            reason = "Not enough data to rank stocks right now.";
+            reason = "Couldn't rank any stock right now: " + bars.size() + " of " + universe.size()
+                    + " stocks loaded, " + scored.size() + " had a full year of prices on " + asOf
+                    + ". Try again in a few minutes.";
         } else if (up == null) {
             reason = "Couldn't load Nifty data, so the market filter can't be checked. Treat these as information only.";
         } else if (!up) {
@@ -165,10 +172,15 @@ public class MomentumService {
                     + "both over the whole test and in the last 12 months (after charges).";
         }
 
-        String howToHold = "Buy at the next open. Hold about a month: re-run the app on or after "
+        if (asOf == null) {
+            asOf = session.now().toLocalDate();
+        }
+        String howToHold = (live ? "Prices are live: buy now, or anytime today near these prices. " : "Buy at the next open. ")
+                + "Hold about a month: re-run the app on or after "
                 + asOf.plusDays(30) + ". Keep anything you hold that still ranks in the top " + Math.round(n * config.buffer())
                 + "; sell the rest and buy the new top names. There is no stop-loss: if the app says \"stay in cash\", sell everything.";
-        return new MomentumResult(recommended, reason, up, asOf, n, perPosition, picks, ranking, table, recentFrom, howToHold);
+        return new MomentumResult(recommended, reason, up, asOf, live, n, perPosition, picks, ranking, table, recentFrom,
+                howToHold);
     }
 
     private static MomentumStock stock(int rank, Scored x, int qty, double amount, String note) {
@@ -186,9 +198,45 @@ public class MomentumService {
         return new StrategyRow(name, Performance.of(all, hold), Performance.of(earlier, hold), Performance.of(recent, hold));
     }
 
-    private static LocalDate latestDate(Map<String, List<Bar>> bars) {
-        return bars.values().stream().map(b -> b.get(b.size() - 1).date()).max(LocalDate::compareTo)
-                .orElse(LocalDate.now());
+    /** The latest bar date shared by the most stocks; null if nothing loaded. */
+    static LocalDate commonLatestDate(Map<String, List<Bar>> bars) {
+        Map<LocalDate, Integer> counts = new HashMap<>();
+        bars.values().forEach(b -> counts.merge(b.get(b.size() - 1).date(), 1, Integer::sum));
+        return counts.entrySet().stream()
+                .max(Map.Entry.<LocalDate, Integer>comparingByValue().thenComparing(Map.Entry.comparingByKey()))
+                .map(Map.Entry::getKey).orElse(null);
+    }
+
+    private void fetchAll(Map<String, List<Bar>> completed, Map<String, List<Bar>> withLive) {
+        ExecutorService pool = Executors.newFixedThreadPool(8);
+        try {
+            Map<String, CompletableFuture<List<Bar>[]>> futures = new LinkedHashMap<>();
+            for (Stock s : universe) {
+                futures.put(s.symbol(), CompletableFuture.supplyAsync(() -> {
+                    List<Bar> c = data.dailyBars(s.symbol(), config.historyYears());
+                    @SuppressWarnings("unchecked")
+                    List<Bar>[] pair = new List[]{c, LiveSession.extend(c, session.live(s.symbol()))};
+                    return pair;
+                }, pool));
+            }
+            for (Map.Entry<String, CompletableFuture<List<Bar>[]>> f : futures.entrySet()) {
+                try {
+                    List<Bar>[] pair = f.getValue().join();
+                    if (!pair[0].isEmpty()) {
+                        completed.put(f.getKey(), pair[0]);
+                        withLive.put(f.getKey(), pair[1]);
+                    }
+                } catch (RuntimeException e) {
+                    Throwable cause = e.getCause() != null ? e.getCause() : e;
+                    if (cause instanceof UnsupportedOperationException u) {
+                        throw u;
+                    }
+                    // a stock we can't load is simply not ranked
+                }
+            }
+        } finally {
+            pool.shutdown();
+        }
     }
 
     private static String rupees(double v) {

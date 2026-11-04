@@ -53,10 +53,22 @@ public class RecommendationService {
     private final Ranker ranker;
     private final PositionSizer sizer;
     private final Rules rules;
+    private final LiveSession session;
 
     public RecommendationService(List<Stock> universe, List<Setup> setups, MarketDataProvider data,
                                  EdgeEstimator edges, CostModel costs, Ranker ranker,
                                  PositionSizer sizer, Rules rules) {
+        this(universe, setups, data, edges, costs, ranker, sizer, rules, LiveSession.closed());
+    }
+
+    /**
+     * With a live session, setups are evaluated on completed bars plus today's forming bar while the market
+     * is open, so signals are provisional until the close. History (the edges) always uses completed bars.
+     */
+    public RecommendationService(List<Stock> universe, List<Setup> setups, MarketDataProvider data,
+                                 EdgeEstimator edges, CostModel costs, Ranker ranker,
+                                 PositionSizer sizer, Rules rules, LiveSession session) {
+        this.session = session;
         this.universe = List.copyOf(universe);
         this.setups = List.copyOf(setups);
         this.data = data;
@@ -151,7 +163,8 @@ public class RecommendationService {
         try {
             Map<Stock, CompletableFuture<List<Bar>>> futures = new LinkedHashMap<>();
             for (Stock s : universe) {
-                futures.put(s, CompletableFuture.supplyAsync(() -> data.dailyBars(s.symbol(), rules.historyYears()), pool));
+                futures.put(s, CompletableFuture.supplyAsync(() -> LiveSession.extend(
+                        data.dailyBars(s.symbol(), rules.historyYears()), session.live(s.symbol())), pool));
             }
             Map<Stock, List<Bar>> out = new LinkedHashMap<>();
             RuntimeException lastFailure = null;

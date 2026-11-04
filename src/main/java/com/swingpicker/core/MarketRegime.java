@@ -19,15 +19,26 @@ public class MarketRegime {
 
     public static final String NIFTY = "^NSEI";
 
+    private static final long RETRY_AFTER_FAILURE_NANOS = 5L * 60 * 1_000_000_000;
+
     private final MarketDataProvider data;
     private final int historyYears;
+    private final LiveSession session;
     private List<Bar> source;
+    private Optional<Bar> sourceLive = Optional.empty();
     private Map<LocalDate, Boolean> upByDate = Map.of();
     private LocalDate latest;
+    private long failedAt = Long.MIN_VALUE;
 
     public MarketRegime(MarketDataProvider data, int historyYears) {
+        this(data, historyYears, LiveSession.closed());
+    }
+
+    /** With a live session, today's forming Nifty bar counts while the market is open. */
+    public MarketRegime(MarketDataProvider data, int historyYears, LiveSession session) {
         this.data = data;
         this.historyYears = historyYears;
+        this.session = session;
     }
 
     /** Empty when the index data can't be loaded or doesn't cover that day. */
@@ -43,21 +54,34 @@ public class MarketRegime {
     }
 
     private void refresh() {
+        // After a failure, don't hammer the source: a backtest asks this question thousands of times.
+        if (failedAt != Long.MIN_VALUE && System.nanoTime() - failedAt < RETRY_AFTER_FAILURE_NANOS) {
+            return;
+        }
         List<Bar> bars;
         try {
             bars = data.dailyBars(NIFTY, historyYears);
+            failedAt = Long.MIN_VALUE;
         } catch (RuntimeException e) {
             if (e instanceof UnsupportedOperationException) {
                 throw e;
             }
-            bars = List.of();
+            failedAt = System.nanoTime();
+            source = List.of();
+            sourceLive = Optional.empty();
+            upByDate = Map.of();
+            latest = null;
+            return;
         }
-        if (bars == source) {
+        Optional<Bar> live = session.live(NIFTY);
+        if (bars == source && live.equals(sourceLive)) {
             return;
         }
         source = bars;
-        upByDate = compute(bars);
-        latest = bars.isEmpty() ? null : bars.get(bars.size() - 1).date();
+        sourceLive = live;
+        List<Bar> all = LiveSession.extend(bars, live);
+        upByDate = compute(all);
+        latest = all.isEmpty() ? null : all.get(all.size() - 1).date();
         if (latest != null && !upByDate.containsKey(latest)) {
             latest = null;
         }

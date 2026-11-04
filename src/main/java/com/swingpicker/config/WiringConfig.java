@@ -4,6 +4,7 @@ import com.swingpicker.core.BacktestEdgeEstimator;
 import com.swingpicker.core.BreakoutSetup;
 import com.swingpicker.core.CostModel;
 import com.swingpicker.core.ExpectedNetRRanker;
+import com.swingpicker.core.LiveSession;
 import com.swingpicker.core.MarketDataProvider;
 import com.swingpicker.core.MarketRegime;
 import com.swingpicker.core.NseDeliveryCostModel;
@@ -95,15 +96,22 @@ public class WiringConfig {
         return new NseDeliveryCostModel();
     }
 
+    /** Market hours + today's live bar (09:15-15:30 IST on weekdays). */
     @Bean
-    public MarketRegime marketRegime(MarketDataProvider data) {
-        return new MarketRegime(data, HISTORY_YEARS);
+    public LiveSession liveSession(MarketDataProvider data, Clock clock) {
+        return new LiveSession(data, clock);
+    }
+
+    @Bean
+    public MarketRegime marketRegime(MarketDataProvider data, LiveSession session) {
+        return new MarketRegime(data, HISTORY_YEARS, session);
     }
 
     /** Swing setups: each one plain and with the Nifty uptrend filter, so the table shows what the filter changes. */
     @Bean
     public RecommendationService recommendationService(Universe universe, MarketDataProvider data,
-                                                       CostModel costs, MarketRegime regime, Clock clock) {
+                                                       CostModel costs, MarketRegime regime, LiveSession session,
+                                                       Clock clock) {
         var edges = new BacktestEdgeEstimator(universe.stocks(), data, HISTORY_YEARS, PRIOR_TRADES,
                 Duration.ofHours(6), clock);
         Setup pullback = new TrendPullbackSetup();
@@ -111,12 +119,12 @@ public class WiringConfig {
         List<Setup> setups = List.of(new RegimeFilteredSetup(pullback, regime), new RegimeFilteredSetup(breakout, regime),
                 pullback, breakout);
         return new RecommendationService(universe.stocks(), setups, data, edges,
-                costs, new ExpectedNetRRanker(), new RiskBasedPositionSizer(costs, LIMITS), RULES);
+                costs, new ExpectedNetRRanker(), new RiskBasedPositionSizer(costs, LIMITS), RULES, session);
     }
 
     @Bean
     public MomentumService momentumService(Universe universe, MarketDataProvider data, MarketRegime regime,
-                                           CostModel costs) {
-        return new MomentumService(universe.stocks(), data, regime, costs, MOMENTUM);
+                                           CostModel costs, LiveSession session) {
+        return new MomentumService(universe.stocks(), data, regime, costs, MOMENTUM, session);
     }
 }

@@ -14,6 +14,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Daily bars for NSE stocks from Yahoo's unofficial chart endpoint ("RELIANCE" -> "RELIANCE.NS").
@@ -22,7 +23,7 @@ import java.util.List;
 public class YahooMarketDataProvider implements MarketDataProvider {
 
     private static final String URL =
-            "https://query2.finance.yahoo.com/v8/finance/chart/%s?range=%dy&interval=1d&events=div%%2Csplit&includeAdjustedClose=true";
+            "https://query2.finance.yahoo.com/v8/finance/chart/%s?range=%s&interval=1d&events=div%%2Csplit&includeAdjustedClose=true";
     // Yahoo rejects some default client user agents.
     private static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 
@@ -36,10 +37,20 @@ public class YahooMarketDataProvider implements MarketDataProvider {
 
     @Override
     public List<Bar> dailyBars(String symbol, int years) {
+        return fetch(symbol, years + "y").completed();
+    }
+
+    /** A small request (last 5 days) that carries today's forming bar during market hours. */
+    @Override
+    public Optional<Bar> liveBar(String symbol) {
+        return fetch(symbol, "5d").live();
+    }
+
+    private YahooChartParser.Parsed fetch(String symbol, String range) {
         String s = symbol.trim().toUpperCase();
         // Indices are passed as Yahoo writes them ("^NSEI"); stocks get the NSE suffix.
         String yahooSymbol = URLEncoder.encode(s.startsWith("^") ? s : s + ".NS", StandardCharsets.UTF_8);
-        HttpRequest request = HttpRequest.newBuilder(URI.create(String.format(URL, yahooSymbol, years)))
+        HttpRequest request = HttpRequest.newBuilder(URI.create(String.format(URL, yahooSymbol, range)))
                 .timeout(Duration.ofSeconds(15))
                 .header("User-Agent", USER_AGENT)
                 .header("Accept", "application/json")
@@ -66,6 +77,6 @@ public class YahooMarketDataProvider implements MarketDataProvider {
         if (status != 200) {
             throw new MarketDataException("Yahoo returned HTTP " + status + " for " + symbol);
         }
-        return YahooChartParser.parse(response.body(), ZonedDateTime.now(clock));
+        return YahooChartParser.parseAll(response.body(), ZonedDateTime.now(clock));
     }
 }

@@ -12,6 +12,7 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.TreeMap;
 
 /**
@@ -21,10 +22,11 @@ import java.util.TreeMap;
  * 1. Dates are IST trading dates (Yahoo stamps each daily bar with the session's open as epoch seconds).
  * 2. Prices are fully adjusted: OHLC scaled by adjclose/close, so splits AND dividends don't show up as
  *    fake drops that would trigger stops in a backtest. Today's bar has factor ~1, so live prices stay real.
- * 3. A bar is dropped if any of O/H/L/C is missing or <= 0, if high < low, or if volume is 0 (holiday rows,
- *    suspended days).
+ * 3. A bar is dropped if any of O/H/L/C is missing or <= 0, if high < low, or (stocks only) if volume is 0
+ *    (holiday rows, suspended days). Indices like ^NSEI often report 0 volume, so volume is ignored for them.
  * 4. Duplicate dates keep the last row (Yahoo sometimes repeats the latest session).
- * 5. Today's bar is dropped until the session is final (after 16:00 IST); setups must only see completed days.
+ * 5. Today's bar is kept out of the completed list until the session is final (after 16:00 IST), so backtests
+ *    only see completed days. Before then it's returned separately as the "live" bar.
  */
 public final class YahooChartParser {
 
@@ -36,7 +38,15 @@ public final class YahooChartParser {
     private YahooChartParser() {
     }
 
+    /** Completed sessions, plus today's still-forming bar while the session isn't final. */
+    public record Parsed(List<Bar> completed, Optional<Bar> live) {
+    }
+
     public static List<Bar> parse(String json, ZonedDateTime now) {
+        return parseAll(json, now).completed();
+    }
+
+    public static Parsed parseAll(String json, ZonedDateTime now) {
         JsonNode root;
         try {
             root = MAPPER.readTree(json);
@@ -60,23 +70,35 @@ public final class YahooChartParser {
 
         LocalDate today = now.withZoneSameInstant(IST).toLocalDate();
         boolean todayIsFinal = !now.withZoneSameInstant(IST).toLocalTime().isBefore(SESSION_FINAL);
+        // Yahoo reports index volume as 0 or null on many days; for indices, volume isn't a validity signal.
+        JsonNode meta = result.path("meta");
+        boolean isIndex = "INDEX".equalsIgnoreCase(meta.path("instrumentType").asText(""))
+                || meta.path("symbol").asText("").startsWith("^");
 
         TreeMap<LocalDate, Bar> byDate = new TreeMap<>();
+        Bar live = null;
         for (int i = 0; i < ts.size(); i++) {
             Double o = num(quote.path("open"), i);
             Double h = num(quote.path("high"), i);
             Double l = num(quote.path("low"), i);
             Double c = num(quote.path("close"), i);
             Double v = num(quote.path("volume"), i);
+            if (v == null && isIndex) {
+                v = 0.0;
+            }
             if (o == null || h == null || l == null || c == null || v == null) {
                 continue;
             }
-            if (o <= 0 || h <= 0 || l <= 0 || c <= 0 || h < l || v <= 0) {
+            if (o <= 0 || h <= 0 || l <= 0 || c <= 0 || h < l || (v <= 0 && !isIndex)) {
                 continue;
             }
 
             LocalDate date = Instant.ofEpochSecond(ts.get(i).asLong()).atZone(IST).toLocalDate();
-            if (date.isAfter(today) || (date.equals(today) && !todayIsFinal)) {
+            if (date.isAfter(today)) {
+                continue;
+            }
+            if (date.equals(today) && !todayIsFinal) {
+                live = new Bar(date, o, h, l, c, v.longValue()); // today's adjustment factor is 1
                 continue;
             }
 
@@ -84,7 +106,7 @@ public final class YahooChartParser {
             double f = (adjClose != null && adjClose > 0) ? adjClose / c : 1.0;
             byDate.put(date, new Bar(date, o * f, h * f, l * f, c * f, v.longValue()));
         }
-        return new ArrayList<>(byDate.values());
+        return new Parsed(new ArrayList<>(byDate.values()), Optional.ofNullable(live));
     }
 
     private static Double num(JsonNode array, int i) {
