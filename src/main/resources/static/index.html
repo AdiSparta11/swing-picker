@@ -47,6 +47,9 @@
   th, td { padding:8px 10px; text-align:right; border-bottom:1px solid var(--line); white-space:nowrap; }
   th:first-child, td:first-child { text-align:left; }
   tr:last-child td { border-bottom:0; }
+  th.t, td.t { text-align:left; white-space:normal; }
+  .skip { display:block; font-size:12px; color:var(--bad); font-weight:400; white-space:normal; }
+  .skipped { margin:8px 0 0; padding:10px 12px; border-left:3px solid var(--bad); font-size:14px; }
   th { font-weight:600; color:var(--muted); font-size:12px; }
   .opt { margin-top:8px; padding:12px 14px; border:1px solid var(--line); border-radius:10px; background:var(--card); font-size:14px; }
   .opt .why { color:var(--muted); margin-top:4px; }
@@ -99,22 +102,28 @@
     if (!m) return '';
     const head = `<h2 class="section">Momentum portfolio · hold ~1 month</h2>
       <div class="verdict ${m.recommended ? 'ok' : ''}"><b>${m.recommended ? 'Recommended: ' + m.picks.length + ' stock' + (m.picks.length === 1 ? '' : 's') : 'Not recommended right now'}</b>${esc(m.reason)}</div>`;
+    const skippedAbove = m.picks.length
+      ? m.ranking.filter(x => x.quantity === 0 && x.note && x.rank < m.picks[m.picks.length - 1].rank) : [];
+    const skippedNote = skippedAbove.length ? `<div class="skipped">${skippedAbove.length} higher-ranked stock${skippedAbove.length === 1 ? ' was' : 's were'} skipped: `
+      + skippedAbove.map(x => `<b>#${x.rank} ${esc(x.symbol)}</b> (${esc(x.note.replace(/^Skipped:\s*/, ''))})`).join(', ')
+      + `.${skippedAbove.some(x => /costs more/.test(x.note)) ? ' A larger amount per stock would let the app buy them.' : ''}</div>` : '';
     const picks = m.picks.length ? `<h2>${m.recommended ? 'Buy' : 'What it would buy'} (${inr(m.perPosition)} each, ranked)</h2>
       <div class="tablewrap"><table>
-        <tr><th>#</th><th>Stock</th><th>Sector</th><th>6 mo</th><th>12 mo</th><th>${m.livePrices ? 'Live price' : 'Last close'}</th><th>Qty</th><th>Amount</th></tr>
-        ${m.picks.map(x => `<tr><td>${x.rank}</td><td><b>${esc(x.symbol)}</b></td><td>${esc(x.sector)}</td>
+        <tr><th>#</th><th class="t">Stock</th><th class="t">Sector</th><th>6 mo</th><th>12 mo</th><th>${m.livePrices ? 'Live price' : 'Last close'}</th><th>Qty</th><th>Amount</th></tr>
+        ${m.picks.map(x => `<tr><td>${x.rank}</td><td class="t"><b>${esc(x.symbol)}</b></td><td class="t">${esc(x.sector)}</td>
           <td class="${cls(x.return6m)}">${pct(x.return6m, 0)}</td><td class="${cls(x.return12m)}">${pct(x.return12m, 0)}</td>
           <td>${px(x.lastClose)}</td><td>${x.quantity}</td><td>${inr(x.amount)}</td></tr>`).join('')}
-      </table></div>
+      </table></div>${skippedNote}
       ${m.recommended ? `<p class="how">${esc(m.howToHold)}</p>` : ''}` : '';
     const others = m.ranking.filter(x => x.quantity === 0);
-    const ranking = others.length ? `<h2>Next in the ranking</h2>
+    const ranking = others.length ? `<h2>Rest of the ranking</h2>
       <p class="note">At your next re-check, keep a holding while it's still in the top ${Math.round(m.positions * 2)}.</p>
       <div class="tablewrap"><table>
-        <tr><th>#</th><th>Stock</th><th>Sector</th><th>6 mo</th><th>12 mo</th><th>${m.livePrices ? 'Live price' : 'Last close'}</th><th>Note</th></tr>
-        ${others.map(x => `<tr><td>${x.rank}</td><td>${esc(x.symbol)}</td><td>${esc(x.sector)}</td>
+        <tr><th>#</th><th class="t">Stock</th><th class="t">Sector</th><th>6 mo</th><th>12 mo</th><th>${m.livePrices ? 'Live price' : 'Last close'}</th></tr>
+        ${others.map(x => `<tr><td>${x.rank}</td><td class="t">${esc(x.symbol)}${x.note ? `<span class="skip">${esc(x.note)}</span>` : ''}</td>
+          <td class="t">${esc(x.sector)}</td>
           <td class="${cls(x.return6m)}">${pct(x.return6m, 0)}</td><td class="${cls(x.return12m)}">${pct(x.return12m, 0)}</td>
-          <td>${px(x.lastClose)}</td><td style="text-align:left">${esc(x.note)}</td></tr>`).join('')}
+          <td>${px(x.lastClose)}</td></tr>`).join('')}
       </table></div>` : '';
     const bt = `<h2>How this strategy has done</h2>
       <p class="note">Monthly rebalance with ${m.positions} stock${m.positions === 1 ? '' : 's'} (what your amount allows), after charges. Last 12 months = since ${esc(m.recentFrom)}. "Worst fall" is the deepest drop from a peak.</p>
