@@ -35,9 +35,13 @@ public final class MomentumBacktest {
                          double buyCost, double sellCost) {
     }
 
-    /** One holding period. Returns are fractions (0.03 = +3%), strategy is after charges. */
+    /**
+     * One holding period. Returns are fractions (0.03 = +3%), strategy is after charges.
+     * {@code holdingReturns} are the individual stocks' returns over the period, before charges:
+     * the raw material for "what does a momentum pick typically do in the month after it's picked".
+     */
     public record Period(LocalDate entryDate, LocalDate exitDate, double strategy, double equalWeight,
-                         double nifty, boolean inCash, int holdings, int newPositions) {
+                         double nifty, boolean inCash, int holdings, int newPositions, List<Double> holdingReturns) {
     }
 
     private MomentumBacktest() {
@@ -114,8 +118,9 @@ public final class MomentumBacktest {
             double charges = (entries * p.buyCost() + exits * p.sellCost()) / slots;
 
             double niftyReturn = nifty.get(t + 1 + p.holdDays()).open() / nifty.get(t + 1).open() - 1;
+            List<Double> each = target.stream().map(sym -> periodReturn.getOrDefault(sym, 0.0)).toList();
             out.add(new Period(entry, exit, gross - charges, ewCount == 0 ? 0 : ewSum / ewCount, niftyReturn,
-                    cash, target.size(), entries));
+                    cash, target.size(), entries, each));
             held = new LinkedHashSet<>(target);
         }
         return out;

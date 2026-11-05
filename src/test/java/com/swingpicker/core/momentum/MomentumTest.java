@@ -147,4 +147,46 @@ class MomentumTest {
         assertEquals(4, r.backtest().size());
         assertTrue(r.backtest().get(0).recent().periods() > 0 && r.backtest().get(0).earlier().periods() > 0);
     }
+
+    @Test
+    void quantilesInterpolate() {
+        List<Double> v = List.of(0.04, -0.02, 0.10, 0.00, 0.06);   // sorted: -0.02 0 0.04 0.06 0.10
+
+        assertEquals(0.04, MomentumService.quantile(v, 0.5), 1e-12);
+        assertEquals(0.00, MomentumService.quantile(v, 0.25), 1e-12);
+        assertEquals(0.06, MomentumService.quantile(v, 0.75), 1e-12);
+        assertEquals(0.0, MomentumService.quantile(List.of(), 0.5), 1e-12);
+    }
+
+    @Test
+    void eachStockGetsTypicalTargetAndItsOwnGoodAndBadMonth() {
+        int days = 252 + 1 + 21 * 30 + 1;
+        Map<String, List<Bar>> bars = new HashMap<>();
+        List<Stock> uni = new ArrayList<>();
+        for (int k = 0; k < 6; k++) {
+            uni.add(new Stock("S" + k, "sector" + k));
+            bars.put("S" + k, series(days, 0.0005 * k, 0.001 + 0.002 * k));   // higher ranks swing more
+        }
+        bars.put(MarketRegime.NIFTY, series(days, 0.001, 0.001));
+        MarketDataProvider data = (sym, y) -> Optional.ofNullable(bars.get(sym)).orElseThrow();
+        MomentumService svc = new MomentumService(uni, data, new MarketRegime(data, 5), new NseDeliveryCostModel(),
+                new MomentumService.Config(5000, 10, 21, 2.0, 5));
+
+        MomentumResult r = svc.recommend(10_000);
+        MomentumResult.Outlook o = r.outlook();
+
+        assertTrue(o.samples() > 0 && o.recentSamples() > 0);
+        assertTrue(o.p25() <= o.median() && o.median() <= o.p75());
+        assertEquals(29, java.time.temporal.ChronoUnit.DAYS.between(java.time.LocalDate.now(), o.reviewDate()), 1);
+        for (MomentumResult.MomentumStock x : r.picks()) {
+            assertEquals(x.lastClose() * (1 + o.median()), x.typicalTarget(), 1e-9);
+            assertTrue(x.goodMonth() > 0 && x.badMonth() < 0);
+            assertEquals(1 / (1 + x.goodMonth()), 1 + x.badMonth(), 1e-12);   // symmetric in log terms
+        }
+        // A jumpier stock gets a wider range.
+        MomentumResult.MomentumStock first = r.picks().get(0);
+        MomentumResult.MomentumStock second = r.picks().get(1);
+        double volFirst = bars.get(first.symbol()) == null ? 0 : first.goodMonth();
+        assertTrue(volFirst > 0 && first.goodMonth() != second.goodMonth());
+    }
 }

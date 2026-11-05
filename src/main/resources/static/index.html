@@ -37,6 +37,7 @@
   .cell { padding:8px 10px; border:1px solid var(--line); border-radius:8px; }
   .cell small { display:block; color:var(--muted); font-size:12px; }
   .cell span { font-variant-numeric:tabular-nums; font-weight:600; }
+  .cell span + small { margin-top:1px; }
   .neg { color:var(--bad); } .pos { color:var(--good); }
   .hist { margin-top:10px; font-size:13px; color:var(--muted); }
   .totals { margin-top:16px; font-size:14px; color:var(--muted); }
@@ -90,6 +91,8 @@
   const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const pct = (v, d = 1) => (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(d) + '%';
   const cls = v => v >= 0 ? 'pos' : 'neg';
+  const fmtDate = d => { try { return new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }); } catch (e) { return d; } };
+  const addSessions = (d, n) => { const t = new Date(d + 'T00:00:00'); while (n > 0) { t.setDate(t.getDate() + 1); if (t.getDay() !== 0 && t.getDay() !== 6) n--; } return t.toISOString().slice(0, 10); };
   const sgnR = v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2) + 'R';
 
   function sessionBanner(x) {
@@ -102,19 +105,34 @@
     if (!m) return '';
     const head = `<h2 class="section">Momentum portfolio · hold ~1 month</h2>
       <div class="verdict ${m.recommended ? 'ok' : ''}"><b>${m.recommended ? 'Recommended: ' + m.picks.length + ' stock' + (m.picks.length === 1 ? '' : 's') : 'Not recommended right now'}</b>${esc(m.reason)}</div>`;
+    const o = m.outlook;
+    const outlookNote = o && o.samples ? `<p class="note">Timeline: hold until <b>${esc(fmtDate(o.reviewDate))}</b>, then re-run the app. `
+      + `"Typical" = the middle result of the ${o.samples} stock-months this strategy held in the backtest: ${pct(o.median)} `
+      + `(half landed between ${pct(o.p25)} and ${pct(o.p75)}; ${Math.round(o.positiveShare * 100)}% ended up). `
+      + `Last 12 months alone: ${pct(o.recentMedian)}. "Good/bad month" is each stock's own normal 1-month swing; about 2 months in 3 land between them. `
+      + `None of these are promises: no stop-loss, so a bad month can be worse.</p>` : '';
+    const pickCard = x => `<div class="card">
+      <div class="head"><span class="sym">#${x.rank} ${esc(x.symbol)}</span><span class="sector">${esc(x.sector)}</span></div>
+      <div class="order">${m.recommended ? 'Buy' : 'Would buy'} <b>${x.quantity}</b> share${x.quantity === 1 ? '' : 's'} ≈ ${inr(x.amount)}${m.livePrices ? ' at the live price' : ' at the next open'}.</div>
+      <div class="grid">
+        <div class="cell"><small>${m.livePrices ? 'Live price' : 'Last close'}</small><span>${px(x.lastClose)}</span></div>
+        <div class="cell"><small>Hold until</small><span>${o ? esc(fmtDate(o.reviewDate)) : '~1 month'}</span></div>
+        <div class="cell"><small>Typical target</small><span class="${cls(x.typicalTarget - x.lastClose)}">${px(x.typicalTarget)}</span><small>${o ? pct(o.median) : ''}</small></div>
+        <div class="cell"><small>Past 6 / 12 mo</small><span class="${cls(x.return12m)}">${pct(x.return6m, 0)} / ${pct(x.return12m, 0)}</span></div>
+        <div class="cell"><small>Good month</small><span class="pos">${px(x.lastClose * (1 + x.goodMonth))}</span><small>${pct(x.goodMonth)}</small></div>
+        <div class="cell"><small>Bad month</small><span class="neg">${px(x.lastClose * (1 + x.badMonth))}</span><small>${pct(x.badMonth)}</small></div>
+        <div class="cell"><small>If good month</small><span class="pos">+${inr(x.quantity * x.lastClose * x.goodMonth)}</span></div>
+        <div class="cell"><small>If bad month</small><span class="neg">−${inr(Math.abs(x.quantity * x.lastClose * x.badMonth))}</span></div>
+      </div>
+    </div>`;
     const skippedAbove = m.picks.length
       ? m.ranking.filter(x => x.quantity === 0 && x.note && x.rank < m.picks[m.picks.length - 1].rank) : [];
     const skippedNote = skippedAbove.length ? `<div class="skipped">${skippedAbove.length} higher-ranked stock${skippedAbove.length === 1 ? ' was' : 's were'} skipped: `
       + skippedAbove.map(x => `<b>#${x.rank} ${esc(x.symbol)}</b> (${esc(x.note.replace(/^Skipped:\s*/, ''))})`).join(', ')
       + `.${skippedAbove.some(x => /costs more/.test(x.note)) ? ' A larger amount per stock would let the app buy them.' : ''}</div>` : '';
-    const picks = m.picks.length ? `<h2>${m.recommended ? 'Buy' : 'What it would buy'} (${inr(m.perPosition)} each, ranked)</h2>
-      <div class="tablewrap"><table>
-        <tr><th>#</th><th class="t">Stock</th><th class="t">Sector</th><th>6 mo</th><th>12 mo</th><th>${m.livePrices ? 'Live price' : 'Last close'}</th><th>Qty</th><th>Amount</th></tr>
-        ${m.picks.map(x => `<tr><td>${x.rank}</td><td class="t"><b>${esc(x.symbol)}</b></td><td class="t">${esc(x.sector)}</td>
-          <td class="${cls(x.return6m)}">${pct(x.return6m, 0)}</td><td class="${cls(x.return12m)}">${pct(x.return12m, 0)}</td>
-          <td>${px(x.lastClose)}</td><td>${x.quantity}</td><td>${inr(x.amount)}</td></tr>`).join('')}
-      </table></div>${skippedNote}
-      ${m.recommended ? `<p class="how">${esc(m.howToHold)}</p>` : ''}` : '';
+    const picks = m.picks.length ? `<h2>${m.recommended ? 'Buy' : 'What it would buy'} (${inr(m.perPosition)} each, ranked)</h2>`
+      + m.picks.map(pickCard).join('') + skippedNote + outlookNote
+      + (m.recommended ? `<p class="how">${esc(m.howToHold)}</p>` : '') : '';
     const others = m.ranking.filter(x => x.quantity === 0);
     const ranking = others.length ? `<h2>Rest of the ranking</h2>
       <p class="note">At your next re-check, keep a holding while it's still in the top ${Math.round(m.positions * 2)}.</p>
@@ -149,9 +167,9 @@
       <div class="order">Buy <b>${p.quantity}</b> share${p.quantity === 1 ? '' : 's'} at next open, ≈ ${inr(p.amount)}. Don't pay above <b>${px(t.maxEntry)}</b>.</div>
       <div class="grid">
         <div class="cell"><small>Reference price</small><span>${px(t.entry)}</span></div>
-        <div class="cell"><small>Stop loss</small><span class="neg">${px(t.stop)}</span></div>
-        <div class="cell"><small>Target</small><span class="pos">${px(t.target)}</span></div>
-        <div class="cell"><small>Exit if neither by</small><span>${t.maxHoldDays} sessions</span></div>
+        <div class="cell"><small>Stop loss</small><span class="neg">${px(t.stop)}</span><small>${pct(t.stop / t.entry - 1)}</small></div>
+        <div class="cell"><small>Target</small><span class="pos">${px(t.target)}</span><small>${pct(t.target / t.entry - 1)} upside</small></div>
+        <div class="cell"><small>Exit if neither by</small><span>${esc(fmtDate(addSessions(t.signalDate, t.maxHoldDays + 1)))}</span><small>${t.maxHoldDays} sessions, ~3 weeks</small></div>
         <div class="cell"><small>Loss at stop</small><span class="neg">−${inr(p.riskRupees)}</span></div>
         <div class="cell"><small>Gain at target</small><span class="pos">+${inr(reward)}</span></div>
         <div class="cell"><small>Win rate (hist.)</small><span>${Math.round(e.winRate * 100)}%</span></div>
@@ -186,7 +204,7 @@
         const t = c.candidate.plan, e = c.candidate.edge;
         return `<div class="opt">
           <b>${esc(t.symbol)}</b><span class="tag">${esc(t.setupName)}</span><span class="tag">${esc(c.candidate.sector)}</span>
-          <div class="lv">Ref ${px(t.entry)} · stop ${px(t.stop)} · target ${px(t.target)} · don't pay above ${px(t.maxEntry)}</div>
+          <div class="lv">Ref ${px(t.entry)} · stop ${px(t.stop)} (${pct(t.stop / t.entry - 1)}) · target ${px(t.target)} (${pct(t.target / t.entry - 1)}) · by ${esc(fmtDate(addSessions(t.signalDate, t.maxHoldDays + 1)))} · don't pay above ${px(t.maxEntry)}</div>
           <div class="lv">Hist. win rate ${Math.round(e.winRate * 100)}% · ${sgnR(c.candidate.expectedNetR)} per trade after charges · ${e.stockTrades} past trades on this stock</div>
           <div class="why">${esc(c.status)}</div>
         </div>`;

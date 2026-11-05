@@ -98,6 +98,7 @@ public class MomentumService {
                 new Params(n, config.holdDays(), config.buffer(), maxPerSector, true, buy, sell));
         LocalDate recentFrom = filtered.isEmpty() ? null
                 : filtered.get(filtered.size() - 1).exitDate().minusYears(1);
+        MomentumResult.Outlook outlook = outlook(plain, recentFrom);
         String label = "Top " + n + " momentum";
         List<StrategyRow> table = List.of(
                 row(label + " + Nifty filter", filtered, Period::strategy, recentFrom),
@@ -133,14 +134,14 @@ public class MomentumService {
                     note = "Skipped: one share costs more than " + rupees(perPosition);
                 } else {
                     perSector.merge(x.stock().sector(), 1, Integer::sum);
-                    MomentumStock pick = stock(k + 1, x, qty, qty * x.lastClose(), "Buy");
+                    MomentumStock pick = stock(k + 1, x, qty, qty * x.lastClose(), "Buy", outlook);
                     picks.add(pick);
                     ranking.add(pick);
                     continue;
                 }
             }
             if (k < Math.max(20, 2 * n)) {
-                ranking.add(stock(k + 1, x, 0, 0, note));
+                ranking.add(stock(k + 1, x, 0, 0, note, outlook));
             }
         }
 
@@ -177,15 +178,45 @@ public class MomentumService {
         }
         String howToHold = (live ? "Prices are live: buy now, or anytime today near these prices. " : "Buy at the next open. ")
                 + "Hold about a month: re-run the app on or after "
-                + asOf.plusDays(30) + ". Keep anything you hold that still ranks in the top " + Math.round(n * config.buffer())
+                + outlook.reviewDate() + ". Keep anything you hold that still ranks in the top " + Math.round(n * config.buffer())
                 + "; sell the rest and buy the new top names. There is no stop-loss: if the app says \"stay in cash\", sell everything.";
         return new MomentumResult(recommended, reason, up, asOf, live, n, perPosition, picks, ranking, table, recentFrom,
-                howToHold);
+                howToHold, outlook);
     }
 
-    private static MomentumStock stock(int rank, Scored x, int qty, double amount, String note) {
+    private MomentumStock stock(int rank, Scored x, int qty, double amount, String note, MomentumResult.Outlook o) {
+        // This stock's own one-period swing: annualised volatility scaled to the holding period.
+        double periodVol = x.score().volatility() * Math.sqrt(config.holdDays() / 252.0);
         return new MomentumStock(rank, x.stock().symbol(), x.stock().sector(), x.score().score(), x.score().return6m(),
-                x.score().return12m(), x.lastClose(), qty, amount, note);
+                x.score().return12m(), x.lastClose(), qty, amount, note,
+                x.lastClose() * (1 + o.median()), Math.exp(periodVol) - 1, Math.exp(-periodVol) - 1);
+    }
+
+    private MomentumResult.Outlook outlook(List<Period> periods, LocalDate recentFrom) {
+        List<Double> all = new ArrayList<>();
+        List<Double> recent = new ArrayList<>();
+        for (Period p : periods) {
+            all.addAll(p.holdingReturns());
+            if (recentFrom != null && !p.entryDate().isBefore(recentFrom)) {
+                recent.addAll(p.holdingReturns());
+            }
+        }
+        LocalDate review = session.now().toLocalDate().plusDays(Math.round(config.holdDays() * 7 / 5.0));
+        double up = all.isEmpty() ? 0 : all.stream().filter(r -> r > 0).count() / (double) all.size();
+        return new MomentumResult.Outlook(config.holdDays(), review, quantile(all, 0.5), quantile(all, 0.25),
+                quantile(all, 0.75), up, quantile(recent, 0.5), all.size(), recent.size());
+    }
+
+    static double quantile(List<Double> values, double q) {
+        if (values.isEmpty()) {
+            return 0;
+        }
+        List<Double> v = new ArrayList<>(values);
+        v.sort(null);
+        double pos = q * (v.size() - 1);
+        int lo = (int) Math.floor(pos);
+        int hi = (int) Math.ceil(pos);
+        return v.get(lo) + (v.get(hi) - v.get(lo)) * (pos - lo);
     }
 
     private StrategyRow row(String name, List<Period> periods, Function<Period, Double> f, LocalDate recentFrom) {
