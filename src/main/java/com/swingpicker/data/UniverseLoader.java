@@ -8,7 +8,9 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The list of stocks to scan. Tries NSE's official index-constituent CSVs (current list, with industry),
@@ -82,6 +84,28 @@ public final class UniverseLoader {
                 continue;
             }
             out.add(new Stock(cols.get(sym), cols.get(ind)));
+        }
+        return out;
+    }
+
+    /** Company names by symbol from NSE's constituent file ("Company Name" and "Symbol" columns). */
+    public static Map<String, String> companyNames(String csv) {
+        String[] lines = csv.replace("\r", "").split("\n");
+        Map<String, String> out = new LinkedHashMap<>();
+        if (lines.length < 2) {
+            return out;
+        }
+        List<String> header = splitCsvLine(lines[0]);
+        int name = indexOf(header, "Company Name");
+        int sym = indexOf(header, "Symbol");
+        if (name < 0 || sym < 0) {
+            return out;
+        }
+        for (int k = 1; k < lines.length; k++) {
+            List<String> cols = splitCsvLine(lines[k]);
+            if (cols.size() > Math.max(name, sym) && !cols.get(sym).isBlank()) {
+                out.put(cols.get(sym), cols.get(name));
+            }
         }
         return out;
     }

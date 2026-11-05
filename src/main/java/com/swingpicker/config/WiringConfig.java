@@ -15,8 +15,10 @@ import com.swingpicker.core.RecommendationService.Rules;
 import com.swingpicker.core.RiskBasedPositionSizer;
 import com.swingpicker.core.RiskBasedPositionSizer.Limits;
 import com.swingpicker.core.TrendPullbackSetup;
+import com.swingpicker.core.analysis.StockAnalysisService;
 import com.swingpicker.core.momentum.MomentumService;
 import com.swingpicker.data.CachingMarketDataProvider;
+import com.swingpicker.data.SymbolSearch;
 import com.swingpicker.data.UniverseLoader;
 import com.swingpicker.data.UniverseLoader.Universe;
 import com.swingpicker.data.YahooChartParser;
@@ -33,6 +35,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The only place that knows about Spring AND the core. Every tunable number lives here.
@@ -107,19 +110,53 @@ public class WiringConfig {
         return new MarketRegime(data, HISTORY_YEARS, session);
     }
 
-    /** Swing setups: each one plain and with the Nifty uptrend filter, so the table shows what the filter changes. */
+    /** The swing setups, each one plain and with the Nifty uptrend filter, so the table shows what the filter changes. */
+    public record SwingSetups(List<Setup> all) {
+    }
+
+    /** Company names by symbol, from NSE's file (for search and display). */
+    public record CompanyNames(Map<String, String> bySymbol) {
+    }
+
     @Bean
-    public RecommendationService recommendationService(Universe universe, MarketDataProvider data,
-                                                       CostModel costs, MarketRegime regime, LiveSession session,
-                                                       Clock clock) {
-        var edges = new BacktestEdgeEstimator(universe.stocks(), data, HISTORY_YEARS, PRIOR_TRADES,
-                Duration.ofHours(6), clock);
+    public SwingSetups swingSetups(MarketRegime regime) {
         Setup pullback = new TrendPullbackSetup();
         Setup breakout = new BreakoutSetup();
-        List<Setup> setups = List.of(new RegimeFilteredSetup(pullback, regime), new RegimeFilteredSetup(breakout, regime),
-                pullback, breakout);
-        return new RecommendationService(universe.stocks(), setups, data, edges,
+        return new SwingSetups(List.of(new RegimeFilteredSetup(pullback, regime), new RegimeFilteredSetup(breakout, regime),
+                pullback, breakout));
+    }
+
+    /** Swing setups' track records, shared by "Find trades" and "Check a stock" so both show the same numbers. */
+    @Bean
+    public BacktestEdgeEstimator edgeEstimator(Universe universe, MarketDataProvider data, Clock clock) {
+        return new BacktestEdgeEstimator(universe.stocks(), data, HISTORY_YEARS, PRIOR_TRADES, Duration.ofHours(6), clock);
+    }
+
+    @Bean
+    public RecommendationService recommendationService(Universe universe, MarketDataProvider data, CostModel costs,
+                                                       SwingSetups setups, BacktestEdgeEstimator edges,
+                                                       LiveSession session) {
+        return new RecommendationService(universe.stocks(), setups.all(), data, edges,
                 costs, new ExpectedNetRRanker(), new RiskBasedPositionSizer(costs, LIMITS), RULES, session);
+    }
+
+    @Bean
+    public CompanyNames companyNames() throws IOException {
+        String csv = new ClassPathResource("nifty200.csv").getContentAsString(StandardCharsets.UTF_8);
+        return new CompanyNames(UniverseLoader.companyNames(csv));
+    }
+
+    @Bean
+    public SymbolSearch symbolSearch(CompanyNames names, HttpClient http) {
+        return new SymbolSearch(names.bySymbol(), http);
+    }
+
+    @Bean
+    public StockAnalysisService stockAnalysisService(Universe universe, CompanyNames names, MarketDataProvider data,
+                                                     MarketRegime regime, SwingSetups setups,
+                                                     BacktestEdgeEstimator edges, LiveSession session, Clock clock) {
+        return new StockAnalysisService(universe.stocks(), names.bySymbol(), data, regime, setups.all(), edges, session,
+                clock, new StockAnalysisService.Config(HISTORY_YEARS, 21, Duration.ofHours(6)));
     }
 
     @Bean

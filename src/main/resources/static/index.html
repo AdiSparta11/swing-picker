@@ -58,6 +58,24 @@
   .tag { display:inline-block; font-size:12px; padding:1px 8px; border-radius:999px; border:1px solid var(--line); color:var(--muted); margin-left:6px; }
   details { margin-top:28px; font-size:14px; color:var(--muted); }
   details li { margin-bottom:6px; }
+  .tabs { display:flex; gap:6px; margin:4px 0 18px; border-bottom:1px solid var(--line); }
+  .tab { background:transparent; color:var(--muted); border:0; border-bottom:2px solid transparent; border-radius:0; padding:8px 4px; margin-right:14px; font-size:16px; }
+  .tab.on { color:var(--fg); border-bottom-color:var(--accent); font-weight:600; }
+  .panel[hidden] { display:none; }
+  .stack { display:flex; flex-direction:column; gap:8px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; }
+  .row > * { flex:1 1 140px; }
+  label.check { display:flex; align-items:center; gap:8px; color:var(--muted); font-size:14px; }
+  label.check input { flex:0 0 auto; width:auto; }
+  .field small { display:block; color:var(--muted); font-size:12px; margin-bottom:3px; }
+  .field input { width:100%; }
+  ul.reasons { list-style:none; padding:0; margin:10px 0 0; }
+  ul.reasons li { display:flex; gap:10px; padding:6px 0; border-top:1px solid var(--line); font-size:14px; }
+  ul.reasons li:first-child { border-top:0; }
+  .pts { flex:0 0 34px; text-align:right; font-weight:650; font-variant-numeric:tabular-nums; }
+  ul.notes { margin:8px 0 0; padding-left:18px; font-size:14px; }
+  ul.notes li { margin-bottom:6px; }
+  .big { font-size:22px; font-weight:650; }
   small.foot { color:var(--muted); display:block; margin-top:20px; font-size:12px; }
   @media (max-width:560px) { .grid { grid-template-columns:repeat(2, 1fr); } }
 </style>
@@ -65,12 +83,37 @@
 <body>
 <main>
   <h1>Swing Picker</h1>
-  <p class="sub">How much do you want to invest today? You get two answers: a momentum portfolio (hold ~1 month) and swing trades (hold up to 3 weeks). Choose one for this money.</p>
-  <form id="f">
-    <input id="amount" type="number" min="1000" step="500" placeholder="10000" inputmode="numeric" required>
-    <button id="go" type="submit">Find trades</button>
-  </form>
-  <div id="out"></div>
+  <div class="tabs">
+    <button class="tab on" data-tab="trades" type="button">Find trades</button>
+    <button class="tab" data-tab="check" type="button">Check a stock</button>
+  </div>
+
+  <section class="panel" id="panel-trades">
+    <p class="sub">How much do you want to invest today? You get two answers: a momentum portfolio (hold ~1 month) and swing trades (hold up to 3 weeks). Choose one for this money.</p>
+    <form id="f">
+      <input id="amount" type="number" min="1000" step="500" placeholder="10000" inputmode="numeric" required>
+      <button id="go" type="submit">Find trades</button>
+    </form>
+    <div id="out"></div>
+  </section>
+
+  <section class="panel" id="panel-check" hidden>
+    <p class="sub">A stock you own or are thinking of buying: every signal the app has, a 3-month to 1-year outlook from what similar stocks did, and a plain verdict.</p>
+    <form id="f2" class="stack" autocomplete="off">
+      <div class="row">
+        <input id="sym" list="symlist" placeholder="Company or symbol, e.g. Kaynes or KAYNES" required>
+        <button id="go2" type="submit">Check</button>
+      </div>
+      <datalist id="symlist"></datalist>
+      <label class="check"><input id="own" type="checkbox"> I own this stock</label>
+      <div id="ownfields" class="row" hidden>
+        <label class="field"><small>Quantity</small><input id="qty" type="number" min="1" step="1" inputmode="numeric"></label>
+        <label class="field"><small>Average buy price (₹)</small><input id="avg" type="number" min="0.05" step="0.05" inputmode="decimal"></label>
+        <label class="field"><small>Buy date (optional, for tax)</small><input id="bdate" type="date"></label>
+      </div>
+    </form>
+    <div id="out2"></div>
+  </section>
 
   <details>
     <summary>How to place swing orders</summary>
@@ -89,8 +132,9 @@
   const inr = (v, d = 0) => '₹' + Number(v).toLocaleString('en-IN', { minimumFractionDigits: d, maximumFractionDigits: d });
   const px = v => inr(v, 2);
   const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const pct = (v, d = 1) => (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(d) + '%';
-  const cls = v => v >= 0 ? 'pos' : 'neg';
+  const ok = v => typeof v === 'number' && isFinite(v);
+  const pct = (v, d = 1) => ok(v) ? (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(d) + '%' : 'n/a';
+  const cls = v => !ok(v) ? '' : v >= 0 ? 'pos' : 'neg';
   const fmtDate = d => { try { return new Date(d + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }); } catch (e) { return d; } };
   const addSessions = (d, n) => { const t = new Date(d + 'T00:00:00'); while (n > 0) { t.setDate(t.getDate() + 1); if (t.getDay() !== 0 && t.getDay() !== 6) n--; } return t.toISOString().slice(0, 10); };
   const sgnR = v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2) + 'R';
@@ -246,6 +290,111 @@
       out.innerHTML = `<div class="verdict"><b>Request failed</b>${esc(err)}</div>`;
     } finally {
       go.disabled = false;
+    }
+  });
+
+  /* ---------- Tabs ---------- */
+  document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === b));
+    document.getElementById('panel-trades').hidden = b.dataset.tab !== 'trades';
+    document.getElementById('panel-check').hidden = b.dataset.tab !== 'check';
+  }));
+
+  /* ---------- Check a stock ---------- */
+  const symInput = document.getElementById('sym');
+  const symList = document.getElementById('symlist');
+  const out2 = document.getElementById('out2');
+  const go2 = document.getElementById('go2');
+  document.getElementById('own').addEventListener('change', e => { document.getElementById('ownfields').hidden = !e.target.checked; });
+
+  let searchTimer;
+  symInput.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    const q = symInput.value.trim();
+    if (q.length < 2 || /^[A-Z0-9&-]+ — /.test(q)) return;
+    searchTimer = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/search?q=' + encodeURIComponent(q));
+        if (!res.ok) return;
+        const matches = await res.json();
+        symList.innerHTML = matches.map(m => `<option value="${esc(m.symbol)} — ${esc(m.name)}"></option>`).join('');
+      } catch (e) { /* suggestions are optional */ }
+    }, 250);
+  });
+
+  const symbolFrom = v => v.split(' — ')[0].trim().toUpperCase();
+
+  function analysisView(a) {
+    const v = a.verdict, t = a.trend, mo = a.momentum, h = a.holding;
+    const head = `<div class="card">
+      <div class="head"><span class="sym">${esc(a.name)} <span class="sector">(${esc(a.symbol)})</span></span>
+        <span class="sector">${a.inUniverse ? esc(a.sector) : 'Not in the Nifty 200 · ranked against it'}</span></div>
+      <div class="big">${px(a.price)}</div>
+      <div class="note">${a.livePrice ? '<span class="live-dot"></span>Live price' : 'Close of ' + esc(fmtDate(a.asOf))}</div>
+    </div>`;
+    const verdict = `<div class="verdict ${v.points > 0 ? 'ok' : ''}"><b>${esc(v.label)} (${v.points > 0 ? '+' : ''}${v.points} points)</b>${esc(v.action)}
+      <ul class="reasons">${v.reasons.map(r => `<li><span class="pts ${r.points > 0 ? 'pos' : r.points < 0 ? 'neg' : ''}">${r.points > 0 ? '+' : ''}${r.points}</span><span>${esc(r.text)}</span></li>`).join('')}</ul>
+    </div>`;
+    const holding = h ? `<h2>Your position</h2><div class="card">
+      <div class="grid">
+        <div class="cell"><small>Quantity · avg price</small><span>${h.quantity} · ${px(h.averagePrice)}</span></div>
+        <div class="cell"><small>Invested → now</small><span>${inr(h.invested)} → ${inr(h.value)}</span></div>
+        <div class="cell"><small>Profit / loss</small><span class="${cls(h.pnl)}">${h.pnl >= 0 ? '+' : '−'}${inr(Math.abs(h.pnl))}</span><small>${pct(h.pnlPct)}</small></div>
+        <div class="cell"><small>${h.breakEvenGain > 0 ? 'Rise needed to break even' : 'Held'}</small><span>${h.breakEvenGain > 0 ? pct(h.breakEvenGain) : (h.daysHeld != null ? h.daysHeld + ' days' : 'in profit')}</span></div>
+      </div>
+      <ul class="notes">${h.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>
+    </div>` : '';
+    const n = a.outlook.length ? a.outlook[0].samples : 0;
+    const outlook = a.outlook.length ? `<h2>Outlook: what similar stocks did next</h2>
+      <p class="note">Stocks ranked like this one on momentum${a.outlook[0].sameMarketState ? ', in the same kind of Nifty market as today,' : ''} between ${esc(fmtDate(a.historyFrom))} and ${esc(fmtDate(a.historyTo))}. "Typical" is the middle result; half of cases landed inside the range. Applied to today's price. Not a forecast for this company: it knows nothing about its results, news or valuation.</p>
+      <div class="grid">${a.outlook.map(o => `<div class="cell">
+        <small>${esc(o.label)} · ~${esc(fmtDate(o.around))}</small>
+        <span class="${cls(o.median)}">${px(o.typicalPrice)}</span><small>${pct(o.median)} typical</small>
+        <small>Range ${px(o.lowPrice)} – ${px(o.highPrice)}</small>
+        <small>${Math.round(o.positiveShare * 100)}% ended up · all stocks ${pct(o.baselineMedian)}</small>
+        ${h ? `<small class="${cls(o.typicalPrice - h.averagePrice)}">${o.typicalPrice >= h.averagePrice ? 'Above' : 'Below'} your ${px(h.averagePrice)}</small>` : ''}
+        <small>${o.samples} cases</small>
+      </div>`).join('')}</div>` : `<p class="note">Less than a year of prices, so there's no momentum rank or outlook yet.</p>`;
+    const facts = `<h2>The facts behind it</h2><div class="grid">
+      <div class="cell"><small>Momentum rank</small><span>${mo ? 'Beats ' + Math.round(mo.shareBeaten * 100) + '%' : 'n/a'}</span><small>of ${mo ? mo.ranked : 0} stocks</small></div>
+      <div class="cell"><small>1 / 3 months</small><span class="${cls(t.return3m)}">${pct(t.return1m, 0)} / ${pct(t.return3m, 0)}</span></div>
+      <div class="cell"><small>6 / 12 months</small><span class="${cls(t.return1y)}">${pct(t.return6m, 0)} / ${pct(t.return1y, 0)}</span></div>
+      <div class="cell"><small>From 52-week high</small><span class="${cls(t.fromHigh)}">${pct(t.fromHigh)}</span><small>${px(t.low52w)} – ${px(t.high52w)}</small></div>
+      <div class="cell"><small>vs 200-day average</small><span class="${cls(t.vsSma200)}">${pct(t.vsSma200)}</span><small>${ok(t.sma200) ? px(t.sma200) : 'n/a'}</small></div>
+      <div class="cell"><small>50-day vs 200-day</small><span>${t.sma50AboveSma200 ? 'Above (uptrend)' : 'Below'}</span></div>
+      <div class="cell"><small>Volatility (yearly)</small><span>${ok(t.volatility) ? Math.round(t.volatility * 100) + '%' : 'n/a'}</span></div>
+      <div class="cell"><small>Nifty 50</small><span class="${a.niftyUptrend ? 'pos' : 'neg'}">${a.niftyUptrend == null ? 'n/a' : a.niftyUptrend ? 'Uptrend' : 'Not in uptrend'}</span></div>
+    </div>`;
+    const setups = a.setups.length ? `<h2>Swing setups on this stock today</h2>` + a.setups.map(s => `<div class="opt">
+        <b>${esc(s.plan.setupName)}</b><span class="tag">${s.hasEdge ? 'counts: positive in both periods' : "doesn't count: not positive in both periods"}</span>
+        <div class="lv">Ref ${px(s.plan.entry)} · stop ${px(s.plan.stop)} (${pct(s.plan.stop / s.plan.entry - 1)}) · target ${px(s.plan.target)} (${pct(s.plan.target / s.plan.entry - 1)}) · don't pay above ${px(s.plan.maxEntry)}</div>
+        <div class="lv">Setup record: ${sgnR(s.record.expectancyR)} per trade (earlier ${sgnR(s.record.earlierExpectancyR)}, last 12 months ${sgnR(s.record.recentExpectancyR)})</div>
+      </div>`).join('') : '';
+    return head + verdict + holding + outlook + facts + setups
+      + `<p class="note" style="margin-top:16px">Not investment or tax advice. The verdict counts signals; it doesn't know the company's results, debt, management or news. Check those too.</p>`;
+  }
+
+  document.getElementById('f2').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const symbol = symbolFrom(symInput.value);
+    const params = new URLSearchParams({ symbol });
+    if (document.getElementById('own').checked) {
+      const qty = document.getElementById('qty').value, avg = document.getElementById('avg').value, bd = document.getElementById('bdate').value;
+      if (!qty || !avg) { out2.innerHTML = '<div class="verdict"><b>Add quantity and average price</b>Or untick "I own this stock".</div>'; return; }
+      params.set('qty', qty); params.set('avgPrice', avg);
+      if (bd) params.set('buyDate', bd);
+    }
+    go2.disabled = true;
+    out2.innerHTML = '<div class="status">Checking ' + esc(symbol) + ' against ~200 stocks and 5 years of history… (first check after a restart can take a few minutes)</div>';
+    try {
+      const res = await fetch('/api/stock?' + params.toString());
+      const body = await res.json();
+      out2.innerHTML = res.ok ? analysisView(body)
+        : `<div class="verdict"><b>Couldn't check ${esc(symbol)} (HTTP ${res.status})</b>${esc(body.marketDataError || body.error || body.pending || JSON.stringify(body))}</div>`;
+    } catch (err) {
+      out2.innerHTML = `<div class="verdict"><b>Request failed</b>${esc(err)}</div>`;
+    } finally {
+      go2.disabled = false;
     }
   });
 </script>

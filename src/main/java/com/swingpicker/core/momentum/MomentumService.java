@@ -270,7 +270,7 @@ public class MomentumService {
         }
     }
 
-    private static String rupees(double v) {
-        return "₹" + java.text.NumberFormat.getIntegerInstance(java.util.Locale.forLanguageTag("en-IN")).format(Math.round(v));
+    static String rupees(double v) {
+        return com.swingpicker.core.Money.rupees(v);
     }
 }
