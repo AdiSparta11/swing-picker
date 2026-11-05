@@ -59,6 +59,23 @@ Every number lives in `config/WiringConfig.java`.
 
 Known limits: survivorship bias (today's index list), Yahoo is unofficial, no event filter yet (results dates).
 
+## Screens
+
+Home (market, your portfolio's calls, watchlist BUYs, momentum leaders, today's swing signals, track record), Find trades,
+Check a stock, Portfolio (saved holdings with HOLD/SELL each), Watchlist (BUY/WAIT/AVOID each), Track record (every pick logged
+and graded automatically with the backtest's rules, recommended vs everything, against the Nifty over the same dates).
+
+## Setup (all free)
+
+| Environment variable (Render > your service > Environment) | What it does |
+|---|---|
+| `DATABASE_URL` | Neon Postgres connection string (`postgresql://...neon.tech/neondb?sslmode=require`). Without it, data lives in memory and resets on restart. Tables are created automatically. |
+| `APP_PASSWORD` | Locks the app. Without it, anyone with the URL can see your portfolio. Changing it logs out every device. |
+| `JOB_TOKEN` | Any long random string. Enables the daily job below. |
+
+Daily job (optional, keeps the track record grading on days you don't open the app): on cron-job.org create a job
+`POST https://<your-app>.onrender.com/api/jobs/daily` with header `X-Job-Token: <JOB_TOKEN>`, weekdays at 16:30 IST.
+
 ## Deploy (Render, free)
 
 Docker web service from this repo; Render sets `PORT`. Heap is capped at 300 MB in the Dockerfile.

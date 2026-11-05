@@ -4,6 +4,7 @@ import com.swingpicker.core.LiveSession;
 import com.swingpicker.core.RecommendationService;
 import com.swingpicker.core.momentum.MomentumResult;
 import com.swingpicker.core.momentum.MomentumService;
+import com.swingpicker.core.track.TrackRecordService;
 import com.swingpicker.domain.Recommendation;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
@@ -34,11 +35,14 @@ public class RecommendController {
     private final RecommendationService swing;
     private final MomentumService momentum;
     private final LiveSession liveSession;
+    private final TrackRecordService track;
 
-    public RecommendController(RecommendationService swing, MomentumService momentum, LiveSession liveSession) {
+    public RecommendController(RecommendationService swing, MomentumService momentum, LiveSession liveSession,
+                               TrackRecordService track) {
         this.swing = swing;
         this.momentum = momentum;
         this.liveSession = liveSession;
+        this.track = track;
     }
 
     /** POST /api/recommend {"amount": 10000} */
@@ -48,6 +52,8 @@ public class RecommendController {
         String at = liveSession.now().format(WHEN) + " IST";
         Recommendation s = swing.recommend(request.amount());       // loads and caches all bars in parallel
         MomentumResult m = momentum.recommend(request.amount());    // then reuses them
+        track.logSwing(s);                                          // every run feeds the track record
+        track.logMomentum(m, 21);
         String message = live
                 ? "Market is open: everything below uses live prices (refreshed every ~3 minutes). Momentum picks can be "
                   + "bought now. Swing signals are provisional until the 3:30 close: buy after about 3:15 if a stock still "

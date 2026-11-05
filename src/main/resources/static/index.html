@@ -2,145 +2,273 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0E1621">
 <title>Swing Picker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..900&display=swap" rel="stylesheet">
 <style>
-  :root { --bg:#fafaf7; --card:#ffffff; --fg:#1d1d1b; --muted:#6b6b66; --line:#e2e2dc; --accent:#1f6f4a; --bad:#b3401f; --good:#1f6f4a; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg:#141413; --card:#1c1c1a; --fg:#ecece6; --muted:#9a9a93; --line:#2e2e2b; --accent:#5cc28f; --bad:#e07a5a; --good:#5cc28f; }
+  /* Tokens. Ink-blue ground; green/red only for money moving; marigold only for things you can act on. */
+  :root {
+    --ink: #0E1621;
+    --panel: #142033;
+    --raise: #1A2940;
+    --line: #253753;
+    --text: #E7EEF6;
+    --muted: #8C9DB3;
+    --gain: #34C77B;
+    --loss: #F2555A;
+    --act: #F4A83A;
+    --act-ink: #1E1405;
+    --r-sm: 6px;
+    --r-md: 10px;
+    --rail: 212px;
   }
-  * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui, -apple-system, sans-serif; }
-  main { max-width:720px; margin:0 auto; padding:32px 16px 48px; }
-  h1 { font-size:24px; margin:0 0 4px; }
-  p.sub { color:var(--muted); margin:0 0 20px; }
-  form { display:flex; gap:8px; }
-  input { flex:1; min-width:0; padding:10px 12px; font-size:16px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--fg); }
-  button { padding:10px 18px; font-size:16px; border:0; border-radius:8px; background:var(--accent); color:#fff; cursor:pointer; white-space:nowrap; }
-  button:disabled { opacity:.6; cursor:wait; }
-  .status { margin-top:20px; color:var(--muted); }
-  .verdict { margin-top:20px; padding:14px 16px; border-radius:10px; border:1px solid var(--line); background:var(--card); }
-  .verdict b { display:block; font-size:18px; margin-bottom:2px; }
-  .verdict.ok { border-color:var(--good); }
-  .session { margin-top:20px; padding:10px 14px; border-radius:10px; border:1px dashed var(--line); font-size:14px; }
-  .session b { margin-right:6px; }
-  .live-dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--good); margin-right:6px; vertical-align:middle; }
-  h2.section { font-size:20px; margin:36px 0 2px; padding-top:20px; border-top:1px solid var(--line); }
-  h2.section:first-of-type { border-top:0; padding-top:0; }
-  p.how { font-size:14px; margin:10px 0 0; }
-  .card { margin-top:12px; padding:16px; border:1px solid var(--line); border-radius:10px; background:var(--card); }
-  .head { display:flex; justify-content:space-between; align-items:baseline; gap:8px; flex-wrap:wrap; }
-  .sym { font-size:20px; font-weight:650; }
-  .sector { color:var(--muted); font-size:13px; }
-  .order { margin:10px 0 12px; font-size:15px; }
-  .grid { display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; }
-  .cell { padding:8px 10px; border:1px solid var(--line); border-radius:8px; }
-  .cell small { display:block; color:var(--muted); font-size:12px; }
-  .cell span { font-variant-numeric:tabular-nums; font-weight:600; }
-  .cell span + small { margin-top:1px; }
-  .neg { color:var(--bad); } .pos { color:var(--good); }
-  .hist { margin-top:10px; font-size:13px; color:var(--muted); }
-  .totals { margin-top:16px; font-size:14px; color:var(--muted); }
-  h2 { font-size:16px; margin:28px 0 4px; }
-  p.note { margin:0 0 8px; font-size:13px; color:var(--muted); }
-  .tablewrap { overflow-x:auto; border:1px solid var(--line); border-radius:10px; background:var(--card); }
-  table { width:100%; border-collapse:collapse; font-size:14px; font-variant-numeric:tabular-nums; }
-  th, td { padding:8px 10px; text-align:right; border-bottom:1px solid var(--line); white-space:nowrap; }
-  th:first-child, td:first-child { text-align:left; }
-  tr:last-child td { border-bottom:0; }
-  th.t, td.t { text-align:left; white-space:normal; }
-  .skip { display:block; font-size:12px; color:var(--bad); font-weight:400; white-space:normal; }
-  .skipped { margin:8px 0 0; padding:10px 12px; border-left:3px solid var(--bad); font-size:14px; }
-  th { font-weight:600; color:var(--muted); font-size:12px; }
-  .opt { margin-top:8px; padding:12px 14px; border:1px solid var(--line); border-radius:10px; background:var(--card); font-size:14px; }
-  .opt .why { color:var(--muted); margin-top:4px; }
-  .opt .lv { font-variant-numeric:tabular-nums; margin-top:4px; }
-  .tag { display:inline-block; font-size:12px; padding:1px 8px; border-radius:999px; border:1px solid var(--line); color:var(--muted); margin-left:6px; }
-  details { margin-top:28px; font-size:14px; color:var(--muted); }
-  details li { margin-bottom:6px; }
-  .tabs { display:flex; gap:6px; margin:4px 0 18px; border-bottom:1px solid var(--line); }
-  .tab { background:transparent; color:var(--muted); border:0; border-bottom:2px solid transparent; border-radius:0; padding:8px 4px; margin-right:14px; font-size:16px; }
-  .tab.on { color:var(--fg); border-bottom-color:var(--accent); font-weight:600; }
-  .panel[hidden] { display:none; }
-  .stack { display:flex; flex-direction:column; gap:8px; }
-  .row { display:flex; gap:8px; flex-wrap:wrap; }
-  .row > * { flex:1 1 140px; }
-  label.check { display:flex; align-items:center; gap:8px; color:var(--muted); font-size:14px; }
-  label.check input { flex:0 0 auto; width:auto; }
-  .field small { display:block; color:var(--muted); font-size:12px; margin-bottom:3px; }
-  .field input { width:100%; }
-  .callcard { margin-top:20px; padding:20px; border-radius:12px; border:2px solid var(--line); background:var(--card); }
-  .callcard.go { border-color:var(--good); }
-  .callcard.stop { border-color:var(--bad); }
-  .callword { font-size:40px; line-height:1; font-weight:800; letter-spacing:1px; }
-  .callcard.go .callword { color:var(--good); }
-  .callcard.stop .callword { color:var(--bad); }
-  .callname { color:var(--muted); font-size:14px; margin:6px 0 10px; }
-  .callline { font-size:17px; font-weight:600; margin-bottom:10px; }
-  .quick { display:flex; flex-wrap:wrap; gap:8px 18px; font-size:14px; color:var(--muted); }
-  .quick b { color:var(--fg); }
-  details.more { margin-top:14px; }
-  details.more > summary { cursor:pointer; color:var(--accent); font-weight:600; padding:6px 0; }
-  ul.reasons { list-style:none; padding:0; margin:10px 0 0; }
-  ul.reasons li { display:flex; gap:10px; padding:6px 0; border-top:1px solid var(--line); font-size:14px; }
-  ul.reasons li:first-child { border-top:0; }
-  .pts { flex:0 0 34px; text-align:right; font-weight:650; font-variant-numeric:tabular-nums; }
-  ul.notes { margin:8px 0 0; padding-left:18px; font-size:14px; }
-  ul.notes li { margin-bottom:6px; }
-  .big { font-size:22px; font-weight:650; }
-  small.foot { color:var(--muted); display:block; margin-top:20px; font-size:12px; }
-  @media (max-width:560px) { .grid { grid-template-columns:repeat(2, 1fr); } }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--ink); color: var(--text);
+    font: 15px/1.5 "Archivo", system-ui, sans-serif; font-variation-settings: "wdth" 100;
+    font-variant-numeric: tabular-nums;
+  }
+  a { color: var(--act); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  :focus-visible { outline: 2px solid var(--act); outline-offset: 2px; border-radius: 4px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+  /* ---------- shell ---------- */
+  .rail {
+    position: fixed; inset: 0 auto 0 0; width: var(--rail); padding: 22px 14px; border-right: 1px solid var(--line);
+    display: flex; flex-direction: column; gap: 2px; background: var(--ink);
+  }
+  .brand { font-weight: 800; font-size: 19px; font-variation-settings: "wdth" 118; letter-spacing: .2px; margin: 0 10px 22px; }
+  .brand span { color: var(--act); }
+  .nav a {
+    display: flex; align-items: center; gap: 11px; padding: 9px 10px; border-radius: var(--r-sm);
+    color: var(--muted); font-weight: 500;
+  }
+  .nav a:hover { color: var(--text); background: var(--panel); text-decoration: none; }
+  .nav a[aria-current="page"] { color: var(--text); background: var(--raise); box-shadow: inset 3px 0 0 var(--act); }
+  .nav svg { width: 18px; height: 18px; flex: 0 0 18px; }
+  .rail .foot { margin-top: auto; padding: 0 10px; font-size: 12px; color: var(--muted); }
+  .rail .foot button { all: unset; cursor: pointer; color: var(--muted); }
+  .rail .foot button:hover { color: var(--text); }
+  .rail .foot button[hidden] { display: none; }
+  main { margin-left: var(--rail); padding: 26px 32px 60px; }
+  .wrap { max-width: 1080px; }
+  .topbar { display: none; }
+  .tabbar { display: none; }
+
+  @media (max-width: 899px) {
+    .rail { display: none; }
+    main { margin-left: 0; padding: 14px 16px calc(84px + env(safe-area-inset-bottom)); }
+    .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+    .topbar .brand { margin: 0; font-size: 18px; }
+    .tabbar {
+      display: grid; grid-template-columns: repeat(6, 1fr); position: fixed; inset: auto 0 0 0; z-index: 10;
+      background: rgba(14, 22, 33, .96); border-top: 1px solid var(--line); padding: 6px 2px calc(6px + env(safe-area-inset-bottom));
+      backdrop-filter: blur(8px);
+    }
+    .tabbar a { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 10.5px; color: var(--muted); padding: 4px 0; }
+    .tabbar a[aria-current="page"] { color: var(--act); }
+    .tabbar svg { width: 21px; height: 21px; }
+    .tabbar a:hover { text-decoration: none; }
+  }
+
+  /* ---------- type ---------- */
+  h1 { font-size: 26px; line-height: 1.15; font-weight: 750; font-variation-settings: "wdth" 112; margin: 0 0 4px; }
+  h2 { font-size: 17px; font-weight: 700; margin: 30px 0 10px; }
+  h3 { font-size: 15px; font-weight: 650; margin: 0 0 8px; }
+  .lede { color: var(--muted); margin: 0 0 18px; max-width: 68ch; }
+  .note { color: var(--muted); font-size: 13px; margin: 6px 0 10px; max-width: 78ch; }
+  .pos { color: var(--gain); }
+  .neg { color: var(--loss); }
+  .muted { color: var(--muted); }
+  small { font-size: 12px; }
+
+  /* ---------- controls ---------- */
+  input, select {
+    font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-sm);
+    padding: 10px 12px; min-width: 0;
+  }
+  input::placeholder { color: #5E7089; }
+  input:focus { border-color: var(--act); outline: none; }
+  input[type=date] { color-scheme: dark; }
+  button { font: inherit; cursor: pointer; }
+  .btn {
+    border: 0; border-radius: var(--r-sm); padding: 10px 18px; background: var(--act); color: var(--act-ink); font-weight: 700;
+    white-space: nowrap;
+  }
+  .btn:hover { filter: brightness(1.06); }
+  .btn:disabled { opacity: .55; cursor: wait; }
+  .btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); font-weight: 600; }
+  .btn.ghost:hover { border-color: var(--muted); }
+  .btn.small { padding: 6px 12px; font-size: 13px; }
+  .btn.danger { background: transparent; color: var(--loss); border: 1px solid rgba(242, 85, 90, .4); font-weight: 600; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; }
+  .row > input { flex: 1 1 200px; }
+  label.field { display: flex; flex-direction: column; gap: 4px; flex: 1 1 130px; font-size: 12px; color: var(--muted); }
+  label.check { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; }
+  label.check input { width: auto; }
+  form { margin: 0; }
+
+  /* ---------- surfaces ---------- */
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md); padding: 16px 18px; }
+  .panel + .panel { margin-top: 12px; }
+  .cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
+  .cols > .panel + .panel { margin-top: 0; }
+  @media (max-width: 899px) { .cols { grid-template-columns: 1fr; } }
+  .status { color: var(--muted); padding: 18px 0; }
+  .empty { color: var(--muted); padding: 14px 0 4px; }
+  .banner { margin: 0 0 16px; padding: 10px 14px; border-radius: var(--r-sm); border: 1px solid rgba(244, 168, 58, .45); background: rgba(244, 168, 58, .08); font-size: 14px; }
+  .error { margin-top: 14px; padding: 12px 14px; border-radius: var(--r-sm); border: 1px solid rgba(242, 85, 90, .45); background: rgba(242, 85, 90, .07); }
+
+  /* Call badges: the one bold thing on every list. */
+  .badge {
+    display: inline-block; min-width: 62px; text-align: center; padding: 3px 8px; border-radius: 4px;
+    font-weight: 850; font-size: 12.5px; letter-spacing: .6px; font-variation-settings: "wdth" 125;
+    border: 1px solid var(--line); color: var(--muted);
+  }
+  .badge.go { color: var(--gain); border-color: rgba(52, 199, 123, .55); background: rgba(52, 199, 123, .08); }
+  .badge.stop { color: var(--loss); border-color: rgba(242, 85, 90, .55); background: rgba(242, 85, 90, .08); }
+
+  /* ---------- home ---------- */
+  .market { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; margin: 4px 0 6px; }
+  .market .level { font-size: 40px; font-weight: 800; line-height: 1; font-variation-settings: "wdth" 90; }
+  .market .chg { font-size: 18px; font-weight: 650; }
+  .market .state { font-size: 15px; }
+  .kpis { display: flex; flex-wrap: wrap; gap: 14px 28px; margin: 6px 0 4px; }
+  .kpi small { display: block; color: var(--muted); }
+  .kpi b { font-size: 20px; font-weight: 750; }
+  .more-link { display: inline-block; margin-top: 10px; font-size: 14px; font-weight: 600; }
+
+  /* ---------- lists (portfolio / watchlist / ranking) ---------- */
+  .list { border-top: 1px solid var(--line); }
+  .item { border-bottom: 1px solid var(--line); }
+  .item > .line, .listhead {
+    display: grid; grid-template-columns: var(--cols, minmax(0, 1.6fr) repeat(4, minmax(0, 1fr)) 78px); gap: 10px;
+    align-items: center; padding: 11px 4px; width: 100%; text-align: left; background: none; border: 0; color: inherit;
+  }
+  .listhead { color: var(--muted); font-size: 12px; padding: 8px 4px; }
+  .listhead .num, .listhead .b { text-align: right; }
+  .item > button.line { cursor: pointer; }
+  .item > button.line:hover { background: rgba(255, 255, 255, .02); }
+  .line .num { text-align: right; }
+  .line .sym { font-weight: 700; }
+  .line .sub { display: block; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .line .b { text-align: right; }
+  .detail { padding: 2px 4px 16px; }
+  .detail .why { margin: 0 0 12px; max-width: 70ch; }
+  .facts { display: flex; flex-wrap: wrap; gap: 6px 22px; font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+  .facts b { color: var(--text); font-weight: 600; }
+  @media (max-width: 899px) {
+    .listhead, .line .hide-sm { display: none; }
+    .item > .line.wide { grid-template-columns: minmax(0, 1fr) auto auto; row-gap: 2px; }
+    .line.wide .num.key { grid-column: 1; text-align: left; font-size: 13px; }
+    .line.wide .b { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+    .line.wide .x { grid-column: 3; grid-row: 1 / span 2; align-self: center; }
+  }
+
+  /* ---------- tables (record, backtests) ---------- */
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 8px 12px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th:first-child, td:first-child, th.t, td.t { text-align: left; }
+  tr:last-child td { border-bottom: 0; }
+  th { font-weight: 600; color: var(--muted); font-size: 12px; }
+  td.t { white-space: normal; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 10px; }
+  .chip { border: 1px solid var(--line); background: none; color: var(--muted); border-radius: 999px; padding: 5px 12px; font-size: 13px; }
+  .chip[aria-pressed="true"] { color: var(--act-ink); background: var(--act); border-color: var(--act); font-weight: 650; }
+
+  /* ---------- reused renderers (trades / check) ---------- */
+  .card { margin-top: 12px; padding: 16px 18px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel); }
+  .head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .sym { font-size: 18px; font-weight: 700; }
+  .sector { color: var(--muted); font-size: 13px; }
+  .order { margin: 8px 0 12px; }
+  .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  @media (max-width: 560px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .cell { padding: 9px 11px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--raise); }
+  .cell small { display: block; color: var(--muted); font-size: 12px; }
+  .cell span { font-weight: 650; }
+  .hist { margin-top: 10px; font-size: 13px; color: var(--muted); }
+  .totals { margin-top: 14px; font-size: 14px; color: var(--muted); }
+  .verdict { margin-top: 16px; padding: 14px 16px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--panel); }
+  .verdict b { display: block; font-size: 17px; margin-bottom: 2px; }
+  .verdict.ok { border-color: rgba(52, 199, 123, .5); }
+  .session { margin-top: 16px; padding: 9px 13px; border-radius: var(--r-sm); border: 1px dashed var(--line); font-size: 14px; color: var(--muted); }
+  .session b { color: var(--text); margin-right: 6px; }
+  .live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--gain); margin-right: 6px; vertical-align: middle; }
+  h2.section { font-size: 20px; margin: 34px 0 4px; padding-top: 22px; border-top: 1px solid var(--line); }
+  .opt { margin-top: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel); font-size: 14px; }
+  .opt .why { color: var(--muted); margin-top: 4px; }
+  .opt .lv { margin-top: 4px; }
+  .tag { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); margin-left: 6px; }
+  .skip { display: block; font-size: 12px; color: var(--loss); font-weight: 400; white-space: normal; }
+  .skipped { margin: 8px 0 0; padding: 10px 12px; border-left: 3px solid var(--loss); font-size: 14px; }
+  p.how { font-size: 14px; margin: 10px 0 0; }
+  ul.reasons { list-style: none; padding: 0; margin: 10px 0 0; }
+  ul.reasons li { display: flex; gap: 10px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 14px; }
+  ul.reasons li:first-child { border-top: 0; }
+  .pts { flex: 0 0 34px; text-align: right; font-weight: 750; }
+  ul.notes { margin: 10px 0 0; padding-left: 18px; font-size: 14px; }
+  ul.notes li { margin-bottom: 6px; }
+  .big { font-size: 24px; font-weight: 750; }
+  .callcard { margin-top: 18px; padding: 22px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); }
+  .callcard.go { border-color: rgba(52, 199, 123, .6); box-shadow: inset 4px 0 0 var(--gain); }
+  .callcard.stop { border-color: rgba(242, 85, 90, .6); box-shadow: inset 4px 0 0 var(--loss); }
+  .callword { font-size: 58px; line-height: .95; font-weight: 900; font-variation-settings: "wdth" 125; letter-spacing: 1px; }
+  .callcard.go .callword { color: var(--gain); }
+  .callcard.stop .callword { color: var(--loss); }
+  .callname { color: var(--muted); font-size: 14px; margin: 8px 0 10px; }
+  .callline { font-size: 17px; font-weight: 600; margin-bottom: 12px; max-width: 62ch; }
+  .quick { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 14px; color: var(--muted); }
+  .quick b { color: var(--text); }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+  details.more { margin-top: 14px; }
+  details.more > summary, details.plain > summary { cursor: pointer; color: var(--act); font-weight: 600; padding: 6px 0; }
+  details.plain { margin-top: 26px; font-size: 14px; color: var(--muted); }
+
+  /* ---------- login ---------- */
+  .gate { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: var(--ink); padding: 16px; }
+  .gate[hidden] { display: none; }
+  .gate form { width: min(360px, 100%); }
+  .gate .brand { margin: 0 0 6px; font-size: 26px; }
+  .gate input { width: 100%; margin: 14px 0 10px; }
+  .gate .btn { width: 100%; }
+  .gate .err { color: var(--loss); font-size: 14px; min-height: 21px; margin-top: 8px; }
 </style>
 </head>
 <body>
+<div class="gate" id="gate" hidden>
+  <form id="loginForm" autocomplete="on">
+    <div class="brand">Swing<span>Picker</span></div>
+    <p class="muted">Your private dashboard. Enter your password to open it.</p>
+    <input id="pw" type="password" autocomplete="current-password" placeholder="Password" required>
+    <button class="btn" type="submit" id="unlockBtn">Unlock</button>
+    <div class="err" id="loginErr" role="alert"></div>
+  </form>
+</div>
+
+<nav class="rail" aria-label="Main">
+  <div class="brand">Swing<span>Picker</span></div>
+  <div class="nav" id="navRail"></div>
+  <div class="foot"><span id="saveState"></span><br><button type="button" id="logoutBtn" hidden>Lock the app</button></div>
+</nav>
+
 <main>
-  <h1>Swing Picker</h1>
-  <div class="tabs">
-    <button class="tab on" data-tab="trades" type="button">Find trades</button>
-    <button class="tab" data-tab="check" type="button">Check a stock</button>
+  <div class="wrap">
+    <div class="topbar"><div class="brand">Swing<span>Picker</span></div><span class="muted" id="topState"></span></div>
+    <div id="view"></div>
   </div>
-
-  <section class="panel" id="panel-trades">
-    <p class="sub">How much do you want to invest today? You get two answers: a momentum portfolio (hold ~1 month) and swing trades (hold up to 3 weeks). Choose one for this money.</p>
-    <form id="f">
-      <input id="amount" type="number" min="1000" step="500" placeholder="10000" inputmode="numeric" required>
-      <button id="go" type="submit">Find trades</button>
-    </form>
-    <div id="out"></div>
-  </section>
-
-  <section class="panel" id="panel-check" hidden>
-    <p class="sub">A stock you own or are thinking of buying: every signal the app has, a 3-month to 1-year outlook from what similar stocks did, and a plain verdict.</p>
-    <form id="f2" class="stack" autocomplete="off">
-      <div class="row">
-        <input id="sym" list="symlist" placeholder="Company or symbol, e.g. Kaynes or KAYNES" required>
-        <button id="go2" type="submit">Check</button>
-      </div>
-      <datalist id="symlist"></datalist>
-      <label class="check"><input id="own" type="checkbox"> I own this stock</label>
-      <div id="ownfields" class="row" hidden>
-        <label class="field"><small>Quantity</small><input id="qty" type="number" min="1" step="1" inputmode="numeric"></label>
-        <label class="field"><small>Average buy price (₹)</small><input id="avg" type="number" min="0.05" step="0.05" inputmode="decimal"></label>
-        <label class="field"><small>Buy date (optional, for tax)</small><input id="bdate" type="date"></label>
-      </div>
-    </form>
-    <div id="out2"></div>
-  </section>
-
-  <details>
-    <summary>How to place swing orders</summary>
-    <ol>
-      <li>Next market morning, place a <b>limit buy at the "Don't pay above" price</b>. If the stock opens higher, it simply won't fill. That's the plan working, not missing out.</li>
-      <li>Once bought, set a <b>GTT OCO</b> (one-cancels-other) with the stop and target as the two triggers.</li>
-      <li>If neither hits by the exit date, sell at that day's close.</li>
-      <li>Picks are computed from the last completed session. Use them the next trading day only.</li>
-    </ol>
-  </details>
-  <small class="foot">Not financial advice. Software that measures how rules played out historically on NSE data (5 years, today's Nifty 200 members, so results lean optimistic); history isn't a promise. Paper trade first. The first request after idle can take a few minutes (free hosting wakes up, then loads 5 years for ~200 stocks).</small>
 </main>
+
+<nav class="tabbar" id="navTabs" aria-label="Main"></nav>
+<datalist id="symlist"></datalist>
+
 <script>
-  const out = document.getElementById('out');
-  const go = document.getElementById('go');
   const inr = (v, d = 0) => '₹' + Number(v).toLocaleString('en-IN', { minimumFractionDigits: d, maximumFractionDigits: d });
   const px = v => inr(v, 2);
   const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -282,60 +410,6 @@
       + otherOptions(s.considered) + setupTable(s.setups);
   }
 
-  document.getElementById('f').addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    go.disabled = true;
-    out.innerHTML = '<div class="status">Scanning ~200 stocks and replaying 5 years of history… (first run after a restart can take a few minutes)</div>';
-    try {
-      const res = await fetch('/api/recommend', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: Number(document.getElementById('amount').value) })
-      });
-      const body = await res.json();
-      if (!res.ok) {
-        out.innerHTML = `<div class="verdict"><b>Couldn't get an answer (HTTP ${res.status})</b>${esc(body.marketDataError || body.error || body.pending || JSON.stringify(body))}</div>`;
-      } else {
-        out.innerHTML = sessionBanner(body.session) + momentumSection(body.momentum) + swingSection(body.swing, body.session);
-      }
-    } catch (err) {
-      out.innerHTML = `<div class="verdict"><b>Request failed</b>${esc(err)}</div>`;
-    } finally {
-      go.disabled = false;
-    }
-  });
-
-  /* ---------- Tabs ---------- */
-  document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === b));
-    document.getElementById('panel-trades').hidden = b.dataset.tab !== 'trades';
-    document.getElementById('panel-check').hidden = b.dataset.tab !== 'check';
-  }));
-
-  /* ---------- Check a stock ---------- */
-  const symInput = document.getElementById('sym');
-  const symList = document.getElementById('symlist');
-  const out2 = document.getElementById('out2');
-  const go2 = document.getElementById('go2');
-  document.getElementById('own').addEventListener('change', e => { document.getElementById('ownfields').hidden = !e.target.checked; });
-
-  let searchTimer;
-  symInput.addEventListener('input', () => {
-    clearTimeout(searchTimer);
-    const q = symInput.value.trim();
-    if (q.length < 2 || /^[A-Z0-9&-]+ — /.test(q)) return;
-    searchTimer = setTimeout(async () => {
-      try {
-        const res = await fetch('/api/search?q=' + encodeURIComponent(q));
-        if (!res.ok) return;
-        const matches = await res.json();
-        symList.innerHTML = matches.map(m => `<option value="${esc(m.symbol)} — ${esc(m.name)}"></option>`).join('');
-      } catch (e) { /* suggestions are optional */ }
-    }, 250);
-  });
-
-  const symbolFrom = v => v.split(' — ')[0].trim().toUpperCase();
-
   function analysisView(a, typedName) {
     const v = a.verdict, t = a.trend, mo = a.momentum, h = a.holding, c = a.consensus, call = a.call;
     const name = a.name && a.name !== a.symbol ? a.name : (typedName || a.symbol);
@@ -419,29 +493,424 @@
       + `<p class="note" style="margin-top:16px">Not investment or tax advice. The verdict counts signals; it doesn't know the company's results, debt, management or news. Check those too.</p></details>`;
   }
 
-  document.getElementById('f2').addEventListener('submit', async (ev) => {
+
+  /* =========================================================
+     App shell: API, login, navigation
+     ========================================================= */
+  const $ = id => document.getElementById(id);
+  const view = () => $('view');
+  let saved = null;      // is data stored in the database?
+  let lockOn = false;
+
+  async function api(path, opts = {}) {
+    const res = await fetch(path, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, ...opts });
+    let body = null;
+    try { body = await res.json(); } catch (e) { /* empty body */ }
+    if (res.status === 401 && body && body.locked) { showGate(); throw new Error('Locked'); }
+    if (!res.ok) throw new Error((body && (body.error || body.marketDataError || body.pending)) || ('Request failed (HTTP ' + res.status + ')'));
+    return body;
+  }
+
+  function showGate() { $('gate').hidden = false; setTimeout(() => $('pw').focus(), 30); }
+
+  $('loginForm').addEventListener('submit', async ev => {
     ev.preventDefault();
-    const symbol = symbolFrom(symInput.value);
-    const params = new URLSearchParams({ symbol });
-    if (document.getElementById('own').checked) {
-      const qty = document.getElementById('qty').value, avg = document.getElementById('avg').value, bd = document.getElementById('bdate').value;
-      if (!qty || !avg) { out2.innerHTML = '<div class="verdict"><b>Add quantity and average price</b>Or untick "I own this stock".</div>'; return; }
-      params.set('qty', qty); params.set('avgPrice', avg);
-      if (bd) params.set('buyDate', bd);
-    }
-    go2.disabled = true;
-    out2.innerHTML = '<div class="status">Checking ' + esc(symbol) + ' against ~200 stocks and 5 years of history… (first check after a restart can take a few minutes)</div>';
+    $('unlockBtn').disabled = true; $('loginErr').textContent = '';
     try {
-      const res = await fetch('/api/stock?' + params.toString());
-      const body = await res.json();
-      out2.innerHTML = res.ok ? analysisView(body, (symInput.value.split(' — ')[1] || '').trim())
-        : `<div class="verdict"><b>Couldn't check ${esc(symbol)} (HTTP ${res.status})</b>${esc(body.marketDataError || body.error || body.pending || JSON.stringify(body))}</div>`;
-    } catch (err) {
-      out2.innerHTML = `<div class="verdict"><b>Request failed</b>${esc(err)}</div>`;
-    } finally {
-      go2.disabled = false;
-    }
+      const res = await fetch('/api/login', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: $('pw').value }) });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) { $('loginErr').textContent = body.error || 'Could not unlock.'; return; }
+      $('gate').hidden = true; $('pw').value = '';
+      $('logoutBtn').hidden = !lockOn;
+      route();
+    } finally { $('unlockBtn').disabled = false; }
   });
+
+  $('logoutBtn').addEventListener('click', async () => { await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' }); showGate(); });
+
+  const ICONS = {
+    home: '<path d="M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z"/>',
+    trades: '<path d="M3 17l5-5 4 4 8-9"/><path d="M14 7h6v6"/>',
+    check: '<circle cx="11" cy="11" r="6.5"/><path d="m20.5 20.5-4.8-4.8"/>',
+    portfolio: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M3 12h18"/>',
+    watchlist: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>',
+    record: '<path d="M8 6h12M8 12h12M8 18h12"/><path d="m3 6 1.2 1.2L6 5M3 12l1.2 1.2L6 11M3 18l1.2 1.2L6 17"/>'
+  };
+  const NAV = [['home', 'Home'], ['trades', 'Find trades'], ['check', 'Check a stock'], ['portfolio', 'Portfolio'],
+               ['watchlist', 'Watchlist'], ['record', 'Track record']];
+  const SHORT = { home: 'Home', trades: 'Trades', check: 'Check', portfolio: 'Holdings', watchlist: 'Watch', record: 'Record' };
+  const icon = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[k]}</svg>`;
+  $('navRail').innerHTML = NAV.map(([k, l]) => `<a href="#/${k}" data-k="${k}">${icon(k)}${l}</a>`).join('');
+  $('navTabs').innerHTML = NAV.map(([k]) => `<a href="#/${k}" data-k="${k}">${icon(k)}${SHORT[k]}</a>`).join('');
+
+  const badge = c => c ? `<span class="badge ${{ BUY: 'go', HOLD: 'go', SELL: 'stop', AVOID: 'stop' }[c] || ''}">${esc(c)}</span>` : '<span class="badge">–</span>';
+  const money = v => ok(v) ? (v < 0 ? '−' : '') + inr(Math.abs(v)) : '–';
+  const signed = v => ok(v) ? (v >= 0 ? '+' : '−') + inr(Math.abs(v)) : '–';
+  const notSavedBanner = () => saved === false
+    ? `<div class="banner">Not saved yet: your holdings, watchlist and track record are kept in memory and will reset when the app restarts. Add <b>DATABASE_URL</b> on Render to keep them.</div>` : '';
+  const errorBox = e => `<div class="error">${esc(e.message || e)}</div>`;
+
+  /* Name/symbol suggestions for any input with list="symlist". */
+  let searchTimer;
+  document.addEventListener('input', ev => {
+    const el = ev.target;
+    if (!el.matches || !el.matches('input[list="symlist"]')) return;
+    clearTimeout(searchTimer);
+    const q = el.value.trim();
+    if (q.length < 2 || / — /.test(q)) return;
+    searchTimer = setTimeout(async () => {
+      try {
+        const m = await api('/api/search?q=' + encodeURIComponent(q));
+        $('symlist').innerHTML = m.map(x => `<option value="${esc(x.symbol)} — ${esc(x.name)}"></option>`).join('');
+      } catch (e) { /* suggestions are optional */ }
+    }, 220);
+  });
+  const symbolFrom = v => v.split(' — ')[0].trim().toUpperCase().replace(/\.NS$/, '');
+  const nameFrom = v => (v.split(' — ')[1] || '').trim();
+
+  /* =========================================================
+     Home
+     ========================================================= */
+  async function renderHome() {
+    view().innerHTML = `<h1>Today</h1><div class="status">Loading the market, your holdings and today's picks. The first load after a restart can take a few minutes.</div>`;
+    let d;
+    try { d = await api('/api/dashboard'); } catch (e) { view().innerHTML = `<h1>Today</h1>` + errorBox(e); return; }
+    saved = d.saved; paintSaveState();
+    const mk = d.market, m = d.momentum, s = d.swing, p = d.portfolio, t = d.portfolio.totals;
+    const state = mk.uptrend == null ? '' : mk.uptrend
+      ? '<span class="pos">Nifty is in an uptrend</span>'
+      : '<span class="neg">Nifty is below its rising 200-day average: stay selective</span>';
+    const hero = `<h1>Today</h1>
+      <div class="market"><span class="level">${ok(mk.niftyClose) ? mk.niftyClose.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '–'}</span>
+        <span class="chg ${cls(mk.niftyChange)}">${pct(mk.niftyChange, 2)}</span><span class="state">${state}</span></div>
+      <p class="note">Nifty 50, ${mk.live ? '<span class="live-dot"></span>live' : 'close of ' + esc(fmtDate(mk.asOf))}. Checked ${esc(mk.checkedAt)}.</p>`;
+
+    const sellCount = t.sell, holdings = p.items;
+    const pf = `<div class="panel"><h3>Your portfolio</h3>${holdings.length ? `
+      <div class="kpis"><div class="kpi"><small>Value</small><b>${money(t.value)}</b></div>
+        <div class="kpi"><small>Profit / loss</small><b class="${cls(t.pnl)}">${signed(t.pnl)} <small>(${pct(t.pnlPct)})</small></b></div>
+        <div class="kpi"><small>Calls</small><b>${t.hold} hold</b>${sellCount ? ` <b class="neg">${sellCount} sell</b>` : ''}</div></div>
+      ${holdings.filter(h => h.call === 'SELL').slice(0, 3).map(h => `<div class="facts"><span>${badge(h.call)} <b>${esc(h.symbol)}</b></span><span>${esc(h.headline || '')}</span></div>`).join('')}
+      <a class="more-link" href="#/portfolio">Open portfolio</a>`
+      : `<p class="empty">Add the stocks you own to see HOLD or SELL for each, every day.</p><a class="more-link" href="#/portfolio">Add a holding</a>`}</div>`;
+
+    const buys = d.watchlist.filter(w => w.call === 'BUY');
+    const wl = `<div class="panel"><h3>Watchlist</h3>${d.watchlist.length ? (buys.length
+        ? buys.map(w => `<div class="facts"><span>${badge(w.call)} <b>${esc(w.symbol)}</b></span><span>${px(w.price)}</span><span>${esc(w.headline)}</span></div>`).join('')
+        : `<p class="empty">None of your ${d.watchlist.length} watched stock${d.watchlist.length === 1 ? ' is a BUY' : 's are a BUY'} right now.</p>`)
+        + `<a class="more-link" href="#/watchlist">Open watchlist</a>`
+      : `<p class="empty">Add stocks you're considering; the app tells you when one turns into a BUY.</p><a class="more-link" href="#/watchlist">Add a stock</a>`}</div>`;
+
+    const top = (m.ranking || []).slice().sort((a, b) => a.rank - b.rank).slice(0, 8);
+    const mom = `<div class="panel"><h3>Momentum leaders</h3>
+      <p class="note">${m.recommended ? '<span class="pos">Recommended now.</span> ' : ''}${esc(m.reason)}</p>
+      <div class="list">${top.map(x => `<div class="item"><div class="line" style="--cols:28px minmax(0,1fr) auto auto">
+        <span class="muted">${x.rank}</span><span><span class="sym">${esc(x.symbol)}</span><span class="sub">${esc(x.sector)}</span></span>
+        <span class="num ${cls(x.return12m)}">${pct(x.return12m, 0)} <small class="muted">1y</small></span><span class="num">${px(x.lastClose)}</span></div></div>`).join('')}</div>
+      <a class="more-link" href="#/trades">Size a momentum portfolio</a></div>`;
+
+    const fired = (s.considered || []);
+    const sw = `<div class="panel"><h3>Swing signals today</h3>${fired.length
+      ? `<p class="note">${esc(s.reason)}</p><div class="list">${fired.slice(0, 6).map(c => `<div class="item"><div class="line" style="--cols:minmax(0,1fr) auto">
+          <span><span class="sym">${esc(c.candidate.plan.symbol)}</span><span class="sub">${esc(c.candidate.plan.setupName)}: ${esc(c.status)}</span></span>
+          <span class="num">${c.picked ? '<span class="badge go">PICK</span>' : '<span class="badge">PASS</span>'}</span></div></div>`).join('')}</div>`
+      : `<p class="empty">${esc(s.reason)}</p>`}<a class="more-link" href="#/trades">See swing trades</a></div>`;
+
+    const tr = (d.track || []).filter(x => x.recommendedOnly === false);
+    const trk = `<div class="panel"><h3>Track record</h3>${tr.some(x => x.closed || x.open)
+      ? tr.map(x => `<div class="facts"><span><b>${x.kind === 'momentum' ? 'Momentum' : 'Swing'}</b></span>
+          <span>${x.closed} closed, ${x.open} open</span>${x.closed ? `<span>won <b>${Math.round(x.winRate * 100)}%</b></span>
+          <span>avg <b class="${cls(x.avgReturn)}">${pct(x.avgReturn)}</b> vs Nifty ${pct(x.avgBenchmark)}</span>` : ''}</div>`).join('')
+      : `<p class="empty">Every pick from now on is logged and graded automatically. Results show up as trades finish.</p>`}
+      <a class="more-link" href="#/record">Open track record</a></div>`;
+
+    view().innerHTML = notSavedBanner() + hero + `<div class="cols" style="margin-top:18px">${pf}${wl}</div>`
+      + `<div class="cols" style="margin-top:12px">${mom}${sw}</div><div style="margin-top:12px">${trk}</div>`;
+  }
+
+  /* =========================================================
+     Find trades (existing renderers)
+     ========================================================= */
+  function renderTrades() {
+    view().innerHTML = `<h1>Find trades</h1>
+      <p class="lede">How much do you want to invest? You get a momentum portfolio (hold about a month) and swing trades (hold up to 3 weeks). Pick one for this money.</p>
+      <form id="f" class="row"><input id="amount" type="number" min="1000" step="500" placeholder="Amount in ₹, e.g. 25000" inputmode="numeric" required>
+        <button class="btn" id="go" type="submit">Find trades</button></form>
+      <div id="out"></div>
+      <details class="plain"><summary>How to place swing orders</summary><ol>
+        <li>Next market morning, place a limit buy at the "Don't pay above" price. If the stock opens higher, it won't fill, and that's the plan working.</li>
+        <li>Once bought, set a GTT OCO order with the stop and the target as its two triggers.</li>
+        <li>If neither hits by the exit date, sell at that day's close.</li></ol></details>`;
+    $('f').addEventListener('submit', async ev => {
+      ev.preventDefault();
+      const out = $('out'), go = $('go');
+      go.disabled = true;
+      out.innerHTML = '<div class="status">Scanning about 200 stocks and replaying 5 years of history. The first run after a restart can take a few minutes.</div>';
+      try {
+        const body = await api('/api/recommend', { method: 'POST', body: JSON.stringify({ amount: Number($('amount').value) }) });
+        out.innerHTML = sessionBanner(body.session) + momentumSection(body.momentum) + swingSection(body.swing, body.session);
+      } catch (e) { out.innerHTML = errorBox(e); } finally { go.disabled = false; }
+    });
+  }
+
+  /* =========================================================
+     Check a stock (existing renderer + actions)
+     ========================================================= */
+  function renderCheck(params) {
+    const pre = params.get('symbol') || '';
+    const preName = params.get('name') || '';
+    view().innerHTML = `<h1>Check a stock</h1>
+      <p class="lede">A stock you own or are thinking of buying: one clear call, the chance it recovers your price, a 3-month to 1-year outlook, and analysts' targets.</p>
+      <form id="f2" autocomplete="off">
+        <div class="row"><input id="sym" list="symlist" placeholder="Company or symbol, e.g. Kaynes" required value="${esc(pre ? (preName ? pre + ' — ' + preName : pre) : '')}">
+          <button class="btn" id="go2" type="submit">Check</button></div>
+        <label class="check" style="margin-top:10px"><input id="own" type="checkbox" ${params.get('qty') ? 'checked' : ''}> I own this stock</label>
+        <div id="ownfields" class="row" ${params.get('qty') ? '' : 'hidden'} style="margin-top:8px">
+          <label class="field">Quantity<input id="qty" type="number" min="1" step="1" inputmode="numeric" value="${esc(params.get('qty') || '')}"></label>
+          <label class="field">Average buy price (₹)<input id="avg" type="number" min="0.05" step="0.05" inputmode="decimal" value="${esc(params.get('avg') || '')}"></label>
+          <label class="field">Buy date (for tax)<input id="bdate" type="date" value="${esc(params.get('date') || '')}"></label>
+        </div>
+      </form><div id="out2"></div>`;
+    $('own').addEventListener('change', e => { $('ownfields').hidden = !e.target.checked; });
+    $('f2').addEventListener('submit', async ev => {
+      ev.preventDefault();
+      const symbol = symbolFrom($('sym').value), typed = nameFrom($('sym').value);
+      const q = new URLSearchParams({ symbol });
+      if ($('own').checked) {
+        if (!$('qty').value || !$('avg').value) { $('out2').innerHTML = errorBox('Add quantity and average price, or untick "I own this stock".'); return; }
+        q.set('qty', $('qty').value); q.set('avgPrice', $('avg').value);
+        if ($('bdate').value) q.set('buyDate', $('bdate').value);
+      }
+      $('go2').disabled = true;
+      $('out2').innerHTML = `<div class="status">Checking ${esc(symbol)} against about 200 stocks and 5 years of history.</div>`;
+      try {
+        const a = await api('/api/stock?' + q.toString());
+        const owned = $('own').checked;
+        $('out2').innerHTML = analysisView(a, typed) + `<div class="actions">
+          ${owned ? `<button class="btn" type="button" id="saveHolding">Save to portfolio</button>` : ''}
+          <button class="btn ghost" type="button" id="watchIt">Add to watchlist</button><span id="actMsg" class="muted" style="align-self:center"></span></div>`;
+        if (owned) $('saveHolding').addEventListener('click', async () => {
+          try {
+            await api('/api/portfolio', { method: 'POST', body: JSON.stringify({ symbol, quantity: Number($('qty').value), averagePrice: Number($('avg').value), buyDate: $('bdate').value || null }) });
+            $('actMsg').innerHTML = 'Saved. <a href="#/portfolio">Open portfolio</a>';
+          } catch (e) { $('actMsg').textContent = e.message; }
+        });
+        $('watchIt').addEventListener('click', async () => {
+          try { await api('/api/watchlist', { method: 'POST', body: JSON.stringify({ symbol }) }); $('actMsg').innerHTML = 'Added. <a href="#/watchlist">Open watchlist</a>'; }
+          catch (e) { $('actMsg').textContent = e.message; }
+        });
+      } catch (e) { $('out2').innerHTML = errorBox(e); } finally { $('go2').disabled = false; }
+    });
+    if (pre) $('f2').requestSubmit();
+  }
+
+  /* =========================================================
+     Portfolio
+     ========================================================= */
+  function holdingForm(id, h) {
+    return `<form class="row" id="${id}" autocomplete="off" style="margin-top:10px">
+      ${h ? '' : `<input name="symbol" list="symlist" placeholder="Company or symbol" required style="flex:2 1 220px">`}
+      <label class="field">Quantity<input name="quantity" type="number" min="1" step="1" inputmode="numeric" required value="${h ? h.quantity : ''}"></label>
+      <label class="field">Average price (₹)<input name="averagePrice" type="number" min="0.05" step="0.05" inputmode="decimal" required value="${h ? h.averagePrice : ''}"></label>
+      <label class="field">Buy date (for tax)<input name="buyDate" type="date" value="${h && h.buyDate ? h.buyDate : ''}"></label>
+      <button class="btn" type="submit">${h ? 'Save changes' : 'Add holding'}</button>
+      ${h ? `<button class="btn ghost" type="button" data-cancel>Cancel</button>` : ''}
+    </form>`;
+  }
+  const formData = f => Object.fromEntries(new FormData(f).entries());
+
+  async function renderPortfolio() {
+    view().innerHTML = `<h1>Portfolio</h1><div class="status">Checking every holding.</div>`;
+    let p;
+    try { p = await api('/api/portfolio'); } catch (e) { view().innerHTML = `<h1>Portfolio</h1>` + errorBox(e); return; }
+    saved = p.saved; paintSaveState();
+    const t = p.totals;
+    const head = `<h1>Portfolio</h1>${notSavedBanner()}
+      ${p.items.length ? `<div class="kpis"><div class="kpi"><small>Invested</small><b>${money(t.invested)}</b></div>
+        <div class="kpi"><small>Value now</small><b>${money(t.value)}</b></div>
+        <div class="kpi"><small>Profit / loss</small><b class="${cls(t.pnl)}">${signed(t.pnl)} <small>(${pct(t.pnlPct)})</small></b></div>
+        <div class="kpi"><small>Calls</small><b>${t.hold} hold</b>${t.sell ? ` <b class="neg">${t.sell} sell</b>` : ''}</div></div>` : ''}`;
+    const rows = p.items.map((h, i) => `<div class="item" data-i="${i}">
+      <button class="line wide" type="button" aria-expanded="false">
+        <span><span class="sym">${esc(h.symbol)}</span><span class="sub">${h.quantity} × ${px(h.averagePrice)}</span></span>
+        <span class="num hide-sm">${ok(h.price) ? px(h.price) : '–'}</span>
+        <span class="num key ${cls(h.pnl)}">${signed(h.pnl)} <small>${pct(h.pnlPct)}</small></span>
+        <span class="num hide-sm">${ok(h.chance1y) ? Math.round(h.chance1y * 100) + '%' : '–'}</span>
+        <span class="num hide-sm">${ok(h.typical1y) ? px(h.typical1y) : '–'}</span>
+        <span class="b">${badge(h.call)}</span>
+      </button>
+      <div class="detail" hidden>
+        ${h.error ? `<p class="why neg">${esc(h.error)}</p>` : `<p class="why">${esc(h.headline)}</p>
+        <div class="facts"><span>Value <b>${money(h.value)}</b></span><span>Score <b>${h.points > 0 ? '+' : ''}${h.points}</b> (${esc(h.label)})</span>
+          ${ok(h.chance6m) ? `<span>Back above your price in 6 months <b>${Math.round(h.chance6m * 100)}%</b></span>` : ''}
+          ${ok(h.chance1y) ? `<span>in 1 year <b>${Math.round(h.chance1y * 100)}%</b></span>` : ''}
+          ${ok(h.analystTarget) ? `<span>Analysts' target <b>${px(h.analystTarget)}</b> (${h.analysts})</span>` : ''}
+          ${h.buyDate ? `<span>Bought ${esc(fmtDate(h.buyDate))}</span>` : ''}</div>`}
+        <div class="actions" style="margin-top:4px">
+          <a class="btn small" href="#/check?symbol=${encodeURIComponent(h.symbol)}&qty=${h.quantity}&avg=${h.averagePrice}${h.buyDate ? '&date=' + h.buyDate : ''}">Full check</a>
+          <button class="btn ghost small" type="button" data-edit>Edit</button>
+          <button class="btn danger small" type="button" data-del>Remove</button>
+        </div>
+        <div data-editbox></div>
+      </div></div>`).join('');
+    view().innerHTML = head + (p.items.length ? `<div class="list" style="margin-top:14px">
+        <div class="listhead">
+          <span>Stock</span><span class="num">Price</span><span class="num">Profit / loss</span><span class="num">Back to cost in 1y</span><span class="num">Typical in 1y</span><span class="b">Call</span></div>
+        ${rows}</div>` : `<p class="empty">No holdings yet. Add what you own and the app gives each one a HOLD or SELL, every day.</p>`)
+      + `<h2>Add a holding</h2>${holdingForm('addForm')}<div id="addMsg"></div>`;
+
+    view().querySelectorAll('.item').forEach(el => {
+      const h = p.items[Number(el.dataset.i)];
+      const btn = el.querySelector('button.line'), det = el.querySelector('.detail');
+      btn.addEventListener('click', () => { det.hidden = !det.hidden; btn.setAttribute('aria-expanded', String(!det.hidden)); });
+      el.querySelector('[data-del]').addEventListener('click', async () => {
+        if (!confirmRemove(el, h)) return;
+      });
+      el.querySelector('[data-edit]').addEventListener('click', () => {
+        const box = el.querySelector('[data-editbox]');
+        box.innerHTML = holdingForm('edit' + h.holdingId, h);
+        box.querySelector('[data-cancel]').addEventListener('click', () => { box.innerHTML = ''; });
+        box.querySelector('form').addEventListener('submit', async ev => {
+          ev.preventDefault();
+          const v = formData(ev.target);
+          try {
+            await api('/api/portfolio/' + h.holdingId, { method: 'PUT', body: JSON.stringify({ quantity: Number(v.quantity), averagePrice: Number(v.averagePrice), buyDate: v.buyDate || null }) });
+            renderPortfolio();
+          } catch (e) { box.insertAdjacentHTML('beforeend', errorBox(e)); }
+        });
+      });
+    });
+    $('addForm').addEventListener('submit', async ev => {
+      ev.preventDefault();
+      const v = formData(ev.target), btn = ev.target.querySelector('button[type=submit]');
+      btn.disabled = true; $('addMsg').innerHTML = '<div class="status">Checking the stock and adding it.</div>';
+      try {
+        await api('/api/portfolio', { method: 'POST', body: JSON.stringify({ symbol: symbolFrom(v.symbol), quantity: Number(v.quantity), averagePrice: Number(v.averagePrice), buyDate: v.buyDate || null }) });
+        renderPortfolio();
+      } catch (e) { $('addMsg').innerHTML = errorBox(e); btn.disabled = false; }
+    });
+  }
+
+  /* Two-step remove: first click asks, second click removes. No browser dialogs. */
+  function confirmRemove(el, h) {
+    const b = el.querySelector('[data-del]');
+    if (b.dataset.armed) {
+      api('/api/portfolio/' + h.holdingId, { method: 'DELETE' }).then(renderPortfolio).catch(e => el.insertAdjacentHTML('beforeend', errorBox(e)));
+      return true;
+    }
+    b.dataset.armed = '1'; b.textContent = 'Click again to remove ' + h.symbol;
+    setTimeout(() => { if (b.isConnected) { delete b.dataset.armed; b.textContent = 'Remove'; } }, 4000);
+    return false;
+  }
+
+  /* =========================================================
+     Watchlist
+     ========================================================= */
+  async function renderWatchlist() {
+    view().innerHTML = `<h1>Watchlist</h1><div class="status">Checking every stock you're watching.</div>`;
+    let w;
+    try { w = await api('/api/watchlist'); } catch (e) { view().innerHTML = `<h1>Watchlist</h1>` + errorBox(e); return; }
+    saved = w.saved; paintSaveState();
+    const rows = w.items.map(x => `<div class="item"><div class="line wide" style="--cols:minmax(0,1.5fr) repeat(3,minmax(0,1fr)) 78px 40px">
+        <span><a class="sym" href="#/check?symbol=${encodeURIComponent(x.symbol)}">${esc(x.symbol)}</a><span class="sub">${esc(x.error || x.headline || '')}</span></span>
+        <span class="num key">${ok(x.price) ? px(x.price) : '–'}</span>
+        <span class="num hide-sm">${ok(x.typical1y) ? px(x.typical1y) + ' <small class="' + cls(x.typical1yPct) + '">' + pct(x.typical1yPct, 0) + '</small>' : '–'}</span>
+        <span class="num hide-sm">${ok(x.analystTarget) ? px(x.analystTarget) : '–'}</span>
+        <span class="b">${badge(x.call)}</span>
+        <button class="btn ghost small x" type="button" data-rm="${esc(x.symbol)}" aria-label="Stop watching ${esc(x.symbol)}">×</button></div></div>`).join('');
+    view().innerHTML = `<h1>Watchlist</h1>${notSavedBanner()}
+      <p class="lede">Stocks you're considering. Each gets BUY, WAIT or AVOID from the same signals as Check a stock.</p>
+      <form class="row" id="watchForm" autocomplete="off"><input name="symbol" list="symlist" placeholder="Company or symbol to watch" required>
+        <button class="btn" type="submit">Watch</button></form><div id="watchMsg"></div>
+      ${w.items.length ? `<div class="list" style="margin-top:16px">
+        <div class="listhead" style="--cols:minmax(0,1.5fr) repeat(3,minmax(0,1fr)) 78px 40px">
+          <span>Stock</span><span class="num">Price</span><span class="num">Typical in 1y</span><span class="num">Analysts' target</span><span class="b">Call</span><span></span></div>${rows}</div>`
+        : `<p class="empty">Nothing on your watchlist yet.</p>`}`;
+    $('watchForm').addEventListener('submit', async ev => {
+      ev.preventDefault();
+      const s = symbolFrom(new FormData(ev.target).get('symbol'));
+      $('watchMsg').innerHTML = `<div class="status">Checking ${esc(s)}.</div>`;
+      try { await api('/api/watchlist', { method: 'POST', body: JSON.stringify({ symbol: s }) }); renderWatchlist(); }
+      catch (e) { $('watchMsg').innerHTML = errorBox(e); }
+    });
+    view().querySelectorAll('[data-rm]').forEach(b => b.addEventListener('click', async () => {
+      try { await api('/api/watchlist/' + encodeURIComponent(b.dataset.rm), { method: 'DELETE' }); renderWatchlist(); }
+      catch (e) { b.closest('.item').insertAdjacentHTML('beforeend', errorBox(e)); }
+    }));
+  }
+
+  /* =========================================================
+     Track record
+     ========================================================= */
+  const STATUS = { open: 'Running', target: 'Hit target', stop: 'Hit stop', time: 'Time exit', 'no-fill': 'Not filled', done: 'Done' };
+  let trackFilter = { kind: 'all', rec: false };
+
+  async function renderRecord() {
+    view().innerHTML = `<h1>Track record</h1><div class="status">Grading every logged pick against what the market did.</div>`;
+    let r;
+    try { r = await api('/api/track'); } catch (e) { view().innerHTML = `<h1>Track record</h1>` + errorBox(e); return; }
+    saved = r.saved; paintSaveState();
+    const block = (kind, title) => {
+      const rec = r.summaries.find(x => x.kind === kind && x.recommendedOnly), all = r.summaries.find(x => x.kind === kind && !x.recommendedOnly);
+      const line = (x, label) => !x || (!x.closed && !x.open) ? `<div class="facts"><span><b>${label}</b></span><span>No picks yet</span></div>`
+        : `<div class="facts"><span><b>${label}</b></span><span>${x.closed} closed, ${x.open} open${x.noFill ? ', ' + x.noFill + ' not filled' : ''}</span>
+          ${x.closed ? `<span>won <b>${Math.round(x.winRate * 100)}%</b></span><span>average <b class="${cls(x.avgReturn)}">${pct(x.avgReturn)}</b></span>
+          ${kind === 'swing' && ok(x.avgR) ? `<span><b class="${cls(x.avgR)}">${sgnR(x.avgR)}</b> per trade</span>` : ''}
+          <span>Nifty same dates ${pct(x.avgBenchmark)}</span><span>beat Nifty <b>${Math.round(x.beatBenchmark * 100)}%</b></span>` : ''}</div>`;
+      return `<div class="panel"><h3>${title}</h3>${line(rec, 'Recommended')}${line(all, 'Everything it flagged')}</div>`;
+    };
+    const filtered = r.calls.filter(c => (trackFilter.kind === 'all' || c.kind === trackFilter.kind) && (!trackFilter.rec || c.recommended));
+    const chip = (label, on, attr) => `<button class="chip" type="button" aria-pressed="${on}" ${attr}>${label}</button>`;
+    view().innerHTML = `<h1>Track record</h1>${notSavedBanner()}
+      <p class="lede">Every pick the app made, graded with the same rules as its backtest: next-open entry, stop first if both levels are touched, and a time exit. Momentum is valued one holding period later. Before charges.</p>
+      <div class="cols">${block('momentum', 'Momentum (top 5, monthly)')}${block('swing', 'Swing setups')}</div>
+      <h2>Every pick</h2>
+      <div class="chips">${chip('All', trackFilter.kind === 'all', 'data-k="all"')}${chip('Momentum', trackFilter.kind === 'momentum', 'data-k="momentum"')}${chip('Swing', trackFilter.kind === 'swing', 'data-k="swing"')}
+        ${chip('Recommended only', trackFilter.rec, 'data-rec')}</div>
+      ${filtered.length ? `<div class="tablewrap"><table>
+        <tr><th>Signal</th><th class="t">Stock</th><th class="t">Kind</th><th class="t">Result</th><th>Entry</th><th>Exit</th><th>Return</th><th>Nifty</th><th>R</th></tr>
+        ${filtered.map(c => `<tr><td>${esc(fmtDate(c.signalDate))}</td><td class="t"><b>${esc(c.symbol)}</b>${c.recommended ? ' <span class="tag">recommended</span>' : ''}</td>
+          <td class="t">${esc(c.kind === 'momentum' ? 'momentum' : c.setup)}</td><td class="t">${esc(STATUS[c.status] || c.status)}</td>
+          <td>${ok(c.entryPrice) ? px(c.entryPrice) : '–'}</td><td>${ok(c.exitPrice) ? px(c.exitPrice) : '–'}</td>
+          <td class="${cls(c.returnPct)}">${ok(c.returnPct) ? pct(c.returnPct) : '–'}</td><td>${ok(c.benchmark) ? pct(c.benchmark) : '–'}</td>
+          <td class="${cls(c.rMultiple)}">${ok(c.rMultiple) ? sgnR(c.rMultiple) : ''}</td></tr>`).join('')}
+      </table></div>` : `<p class="empty">No picks logged yet. They're added whenever Home or Find trades runs after the close, or by the daily job.</p>`}`;
+    view().querySelectorAll('.chip[data-k]').forEach(b => b.addEventListener('click', () => { trackFilter.kind = b.dataset.k; renderRecord(); }));
+    view().querySelector('.chip[data-rec]').addEventListener('click', () => { trackFilter.rec = !trackFilter.rec; renderRecord(); });
+  }
+
+  /* =========================================================
+     Router
+     ========================================================= */
+  function paintSaveState() {
+    const t = saved === false ? 'Not saved (no database)' : saved ? 'Saved to your database' : '';
+    $('saveState').textContent = t;
+    $('topState').textContent = saved === false ? 'Not saved' : '';
+  }
+
+  const SCREENS = { home: renderHome, trades: renderTrades, check: renderCheck, portfolio: renderPortfolio,
+                    watchlist: renderWatchlist, record: renderRecord };
+  function route() {
+    const [path, query] = (location.hash.replace(/^#\/?/, '') || 'home').split('?');
+    const key = SCREENS[path] ? path : 'home';
+    document.querySelectorAll('.nav a[data-k], .tabbar a[data-k]').forEach(a => {
+      if (a.dataset.k === key) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+    });
+    window.scrollTo(0, 0);
+    SCREENS[key](new URLSearchParams(query || ''));
+  }
+  window.addEventListener('hashchange', route);
+
+  (async () => {
+    try {
+      const s = await (await fetch('/api/session', { credentials: 'same-origin' })).json();
+      lockOn = s.lockEnabled;
+      $('logoutBtn').hidden = !s.lockEnabled;
+      if (s.lockEnabled && !s.unlocked) { showGate(); return; }
+    } catch (e) { /* the screens will show the error */ }
+    route();
+  })();
 </script>
 </body>
 </html>

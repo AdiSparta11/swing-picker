@@ -157,6 +157,58 @@ public class BacktestEdgeEstimator implements EdgeEstimator {
         return new Memo(clock.instant(), Stats.of(all), Stats.of(earlier), Stats.of(recent), recentFrom, byStock);
     }
 
+    /**
+     * How one planned trade played out, signalled on bar {@code signalIndex}.
+     *
+     * @param status target, stop, time (exited at the time limit) or no-fill (next open above maxEntry or at/below stop)
+     */
+    public record Outcome(String status, int entryIndex, double entry, int exitIndex, double exit, double r) {
+    }
+
+    /**
+     * The single rulebook for a trade, shared by the backtest and the live track record:
+     * enter at the next open (skip if above maxEntry or at/below the stop); each later day an open beyond the stop
+     * or target fills at the open; if a day touches both, the stop counts first; otherwise exit at the close of the
+     * last hold day. Empty when there isn't enough data after the signal yet.
+     */
+    public static Optional<Outcome> simulate(TradePlan plan, List<Bar> bars, int signalIndex) {
+        int entryDay = signalIndex + 1;
+        if (entryDay >= bars.size()) {
+            return Optional.empty();
+        }
+        double entry = bars.get(entryDay).open();
+        if (entry > plan.maxEntry() || entry <= plan.stop()) {
+            return Optional.of(new Outcome("no-fill", entryDay, entry, entryDay, entry, 0));
+        }
+        double risk = entry - plan.stop();
+        int lastDay = entryDay + plan.maxHoldDays() - 1;
+        for (int d = entryDay; d <= Math.min(lastDay, bars.size() - 1); d++) {
+            Bar b = bars.get(d);
+            double exit = Double.NaN;
+            String status = null;
+            if (d > entryDay && b.open() <= plan.stop()) {
+                exit = b.open();
+                status = "stop";
+            } else if (d > entryDay && b.open() >= plan.target()) {
+                exit = b.open();
+                status = "target";
+            } else if (b.low() <= plan.stop()) {
+                exit = plan.stop();
+                status = "stop";
+            } else if (b.high() >= plan.target()) {
+                exit = plan.target();
+                status = "target";
+            } else if (d == lastDay) {
+                exit = b.close();
+                status = "time";
+            }
+            if (status != null) {
+                return Optional.of(new Outcome(status, entryDay, entry, d, exit, (exit - entry) / risk));
+            }
+        }
+        return Optional.empty(); // still running
+    }
+
     /** All completed, non-overlapping trades the setup would have taken on this stock. */
     public static List<Trade> replay(Setup setup, String symbol, List<Bar> bars) {
         List<Trade> trades = new ArrayList<>();
@@ -168,41 +220,16 @@ public class BacktestEdgeEstimator implements EdgeEstimator {
                 i++;
                 continue;
             }
-            TradePlan plan = signal.get();
-            int entryDay = i + 1;
-            double entry = bars.get(entryDay).open();
-            if (entry > plan.maxEntry() || entry <= plan.stop()) {
+            Optional<Outcome> o = simulate(signal.get(), bars, i);
+            if (o.isEmpty()) {
+                break; // not enough future to know how it ended
+            }
+            if (o.get().status().equals("no-fill")) {
                 i++;
                 continue;
             }
-            double risk = entry - plan.stop();
-            int lastDay = entryDay + plan.maxHoldDays() - 1;
-            if (lastDay >= n) {
-                break; // not enough future to know how it ended
-            }
-
-            double exit = Double.NaN;
-            int exitDay = lastDay;
-            for (int d = entryDay; d <= lastDay; d++) {
-                Bar b = bars.get(d);
-                if (d > entryDay && b.open() <= plan.stop()) {
-                    exit = b.open();
-                } else if (d > entryDay && b.open() >= plan.target()) {
-                    exit = b.open();
-                } else if (b.low() <= plan.stop()) {
-                    exit = plan.stop();
-                } else if (b.high() >= plan.target()) {
-                    exit = plan.target();
-                } else if (d == lastDay) {
-                    exit = b.close();
-                }
-                if (!Double.isNaN(exit)) {
-                    exitDay = d;
-                    break;
-                }
-            }
-            trades.add(new Trade(symbol, bars.get(i).date(), (exit - entry) / risk));
-            i = exitDay + 1;
+            trades.add(new Trade(symbol, bars.get(i).date(), o.get().r()));
+            i = o.get().exitIndex() + 1;
         }
         return trades;
     }

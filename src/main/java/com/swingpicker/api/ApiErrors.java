@@ -1,6 +1,7 @@
 package com.swingpicker.api;
 
 import com.swingpicker.data.MarketDataException;
+import com.swingpicker.store.JdbcStore;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -22,6 +23,12 @@ public class ApiErrors {
     @ExceptionHandler(MarketDataException.class)
     public ResponseEntity<Map<String, String>> marketData(MarketDataException e) {
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of("marketDataError", e.getMessage()));
+    }
+
+    /** Database unreachable or misconfigured. */
+    @ExceptionHandler(JdbcStore.StoreException.class)
+    public ResponseEntity<Map<String, String>> store(JdbcStore.StoreException e) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of("error", e.getMessage()));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

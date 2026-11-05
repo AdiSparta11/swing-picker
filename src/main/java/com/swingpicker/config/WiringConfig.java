@@ -15,7 +15,15 @@ import com.swingpicker.core.RecommendationService.Rules;
 import com.swingpicker.core.RiskBasedPositionSizer;
 import com.swingpicker.core.RiskBasedPositionSizer.Limits;
 import com.swingpicker.core.TrendPullbackSetup;
+import com.swingpicker.auth.Auth;
+import com.swingpicker.auth.AuthFilter;
 import com.swingpicker.core.analysis.StockAnalysisService;
+import com.swingpicker.core.portfolio.PortfolioService;
+import com.swingpicker.core.track.TrackRecordService;
+import com.swingpicker.store.JdbcStore;
+import com.swingpicker.store.MemoryStore;
+import com.swingpicker.store.Store;
+import jakarta.servlet.Filter;
 import com.swingpicker.core.momentum.MomentumService;
 import com.swingpicker.data.CachingMarketDataProvider;
 import com.swingpicker.data.SymbolSearch;
@@ -158,6 +166,50 @@ public class WiringConfig {
                                                      BacktestEdgeEstimator edges, LiveSession session, Clock clock) {
         return new StockAnalysisService(universe.stocks(), names.bySymbol(), data, regime, setups.all(), edges, session,
                 clock, new StockAnalysisService.Config(HISTORY_YEARS, 21, Duration.ofHours(6)), new YahooFundamentals(clock));
+    }
+
+    /** Saved data: Postgres when DATABASE_URL is set (Neon), otherwise in memory (lost on restart). */
+    @Bean
+    public Store store(Clock clock) {
+        String url = System.getenv("DATABASE_URL");
+        if (url == null || url.isBlank()) {
+            log.warn("DATABASE_URL not set: portfolio, watchlist and track record are kept in memory only");
+            return new MemoryStore(clock);
+        }
+        try {
+            Store s = new JdbcStore(JdbcStore.Target.parse(url));
+            log.info("Saved data: Postgres");
+            return s;
+        } catch (RuntimeException e) {
+            // Start anyway so the app is usable; the page shows "not saved" until the database is fixed.
+            log.warn("Couldn't use DATABASE_URL ({}); falling back to memory", e.getMessage());
+            return new MemoryStore(clock);
+        }
+    }
+
+    /** One password for the app (APP_PASSWORD) and a separate token for the daily job (JOB_TOKEN). */
+    @Bean
+    public Auth auth(Clock clock) {
+        Auth a = new Auth(System.getenv("APP_PASSWORD"), System.getenv("JOB_TOKEN"), clock);
+        if (!a.enabled()) {
+            log.warn("APP_PASSWORD not set: the app is NOT locked");
+        }
+        return a;
+    }
+
+    @Bean
+    public Filter authFilter(Auth auth) {
+        return new AuthFilter(auth);
+    }
+
+    @Bean
+    public TrackRecordService trackRecordService(Store store, MarketDataProvider data, LiveSession session) {
+        return new TrackRecordService(store, data, session, HISTORY_YEARS);
+    }
+
+    @Bean
+    public PortfolioService portfolioService(Store store, StockAnalysisService analysis) {
+        return new PortfolioService(store, analysis);
     }
 
     @Bean
