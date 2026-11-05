@@ -65,11 +65,19 @@ public class StockAnalysisService {
     private final LiveSession session;
     private final Clock clock;
     private final Config config;
+    private final FundamentalsProvider fundamentals;
     private Model model;
 
     public StockAnalysisService(List<Stock> universe, Map<String, String> companyNames, MarketDataProvider data,
                                 MarketRegime regime, List<Setup> setups, EdgeEstimator edges, LiveSession session,
                                 Clock clock, Config config) {
+        this(universe, companyNames, data, regime, setups, edges, session, clock, config, FundamentalsProvider.none());
+    }
+
+    public StockAnalysisService(List<Stock> universe, Map<String, String> companyNames, MarketDataProvider data,
+                                MarketRegime regime, List<Setup> setups, EdgeEstimator edges, LiveSession session,
+                                Clock clock, Config config, FundamentalsProvider fundamentals) {
+        this.fundamentals = fundamentals;
         this.universe = List.copyOf(universe);
         this.companyNames = Map.copyOf(companyNames);
         this.data = data;
@@ -121,19 +129,24 @@ public class StockAnalysisService {
                     continue;
                 }
                 LocalDate around = today.date().plusDays(Math.round(ForwardReturnModel.HORIZONS[h] * 365.0 / 252));
+                Double chance = position == null ? null
+                        : m.shareAtLeast(momentum.quintile(), up, h, position.averagePrice() / price - 1);
                 outlook.add(new HorizonOutlook(ForwardReturnModel.LABELS[h], ForwardReturnModel.HORIZONS[h], around,
                         price * (1 + s.median()), price * (1 + s.p25()), price * (1 + s.p75()), s.median(), s.p25(),
-                        s.p75(), s.positiveShare(), s.n(), base.median(), m.usesRegime(momentum.quintile(), up, h)));
+                        s.p75(), s.positiveShare(), s.n(), base.median(), m.usesRegime(momentum.quintile(), up, h),
+                        chance));
             }
         }
 
-        Verdict verdict = verdict(momentum, trend, up, outlook, fired, position != null);
+        Consensus consensus = fundamentals.consensus(symbol).orElse(null);
+        Verdict verdict = verdict(momentum, trend, up, outlook, fired, position != null, consensus, price);
         Holding holding = position == null ? null : holding(position, price, verdict);
+        StockAnalysis.Call call = call(verdict, holding, chanceAt(outlook, 126), chanceAt(outlook, 252));
         String name = companyNames.getOrDefault(symbol, symbol);
         String sector = universe.stream().filter(x -> x.symbol().equals(symbol)).map(Stock::sector).findFirst().orElse("");
         boolean inUniverse = !sector.isEmpty();
         return new StockAnalysis(symbol, name, sector, inUniverse, today.date(), live, price, trend, momentum, up,
-                fired, outlook, m.from(), m.to(), verdict, holding);
+                fired, outlook, m.from(), m.to(), verdict, holding, consensus, call);
     }
 
     static String normalise(String raw) {
@@ -211,6 +224,11 @@ public class StockAnalysisService {
 
     static Verdict verdict(Momentum m, Trend t, Boolean up, List<HorizonOutlook> outlook, List<SetupSignal> fired,
                            boolean holding) {
+        return verdict(m, t, up, outlook, fired, holding, null, Double.NaN);
+    }
+
+    static Verdict verdict(Momentum m, Trend t, Boolean up, List<HorizonOutlook> outlook, List<SetupSignal> fired,
+                           boolean holding, Consensus consensus, double price) {
         List<Reason> reasons = new ArrayList<>();
         if (m == null) {
             reasons.add(new Reason(0, "Less than a year of prices, so it can't be ranked on momentum."));
@@ -259,6 +277,24 @@ public class StockAnalysisService {
                     + " swing setup fired, but that setup hasn't made money in both periods, so it doesn't count."));
         }
 
+        if (consensus != null && consensus.hasTarget() && price > 0) {
+            double upside = consensus.targetMean() / price - 1;
+            String base = String.format("Analysts: %d analyst%s' average 12-month target is %s (%s from here)%s.",
+                    consensus.analysts(), consensus.analysts() == 1 ? "" : "s", rupees(consensus.targetMean()), pct(upside),
+                    consensus.rating() == null ? "" : ", rating " + consensus.rating().replace('_', ' '));
+            if (consensus.analysts() < 3) {
+                reasons.add(new Reason(0, base + " Too few analysts to count."));
+            } else if (upside > 0.15) {
+                reasons.add(new Reason(1, base + " Targets run optimistic on average, so only an upside above 15% counts."));
+            } else if (upside < 0) {
+                reasons.add(new Reason(-1, base + " Even the analysts' average sees it lower."));
+            } else {
+                reasons.add(new Reason(0, base + " Under 15% upside is within analysts' usual optimism, so it doesn't count."));
+            }
+        } else if (consensus != null || !Double.isNaN(price)) {
+            reasons.add(new Reason(0, "Analysts: no consensus price target found for this stock."));
+        }
+
         int total = reasons.stream().mapToInt(Reason::points).sum();
         String label;
         String action;
@@ -281,6 +317,60 @@ public class StockAnalysisService {
             action = holding ? "Consider exiting. Almost every signal is against it." : "Avoid. Almost every signal is against it.";
         }
         return new Verdict(total, label, action, reasons);
+    }
+
+    static Double chanceAt(List<HorizonOutlook> outlook, int sessions) {
+        return outlook.stream().filter(o -> o.sessions() == sessions).map(HorizonOutlook::chanceAboveCost)
+                .filter(c -> c != null && !c.isNaN()).findFirst().orElse(null);
+    }
+
+    static final double RECOVERY_BAR = 0.40;
+    static final int AGAINST = -2;
+    static final int FOR = 2;
+
+    /**
+     * The bold one-word call.
+     *   Not owned:  BUY at +2 points or more, AVOID at -2 or less, otherwise WAIT.
+     *   Owned at a loss: SELL only if the signals are clearly against it (-2 or less) AND fewer than 40% of
+     *                    similar cases got back above your price within a year (6 months if 1 year is unavailable);
+     *                    otherwise HOLD.
+     *   Owned in profit: SELL if the signals are clearly against it (-2 or less), otherwise HOLD.
+     */
+    static StockAnalysis.Call call(Verdict v, Holding h, Double chance6m, Double chance1y) {
+        int pts = v.points();
+        String p = (pts > 0 ? "+" : "") + pts + " point" + (Math.abs(pts) == 1 ? "" : "s");
+        if (h == null) {
+            String rule = "BUY at +2 points or more, AVOID at -2 or less, otherwise WAIT.";
+            if (pts >= FOR) {
+                return new StockAnalysis.Call("BUY", "Signals favour buying (" + p + ").", rule);
+            }
+            if (pts <= AGAINST) {
+                return new StockAnalysis.Call("AVOID", "Signals are against it (" + p + ").", rule);
+            }
+            return new StockAnalysis.Call("WAIT", "No clear edge (" + p + "). Waiting costs nothing.", rule);
+        }
+        if (h.pnl() < 0) {
+            String rule = "At a loss: SELL only if the signals are clearly against it (-2 points or less) AND fewer than "
+                    + Math.round(RECOVERY_BAR * 100) + "% of similar cases got back above your price within a year. Otherwise HOLD.";
+            Double c = chance1y != null ? chance1y : chance6m;
+            String horizon = chance1y != null ? "a year" : "6 months";
+            String odds = c == null ? "No history to estimate the chance of getting back to your price."
+                    : Math.round(c * 100) + "% of similar cases got back above your " + rupees(h.averagePrice()) + " within " + horizon + ".";
+            boolean poorOdds = c == null || c < RECOVERY_BAR;
+            if (pts <= AGAINST && poorOdds) {
+                return new StockAnalysis.Call("SELL", odds + " And the signals are against it (" + p + ").", rule);
+            }
+            if (!poorOdds) {
+                return new StockAnalysis.Call("HOLD", odds, rule);
+            }
+            return new StockAnalysis.Call("HOLD", "Signals aren't strongly against it (" + p + "), though only " + odds, rule);
+        }
+        String rule = "In profit: SELL if the signals are clearly against it (-2 points or less), otherwise HOLD.";
+        if (pts <= AGAINST) {
+            return new StockAnalysis.Call("SELL", "In profit, but the signals have turned against it (" + p
+                    + "). Consider booking the gain; see the tax note.", rule);
+        }
+        return new StockAnalysis.Call("HOLD", "In profit and the signals aren't against it (" + p + ").", rule);
     }
 
     static Holding holding(Position p, double price, Verdict v) {

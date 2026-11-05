@@ -26,7 +26,17 @@ public record StockAnalysis(
         LocalDate historyFrom,
         LocalDate historyTo,
         Verdict verdict,
-        Holding holding) {
+        Holding holding,
+        Consensus consensus,
+        Call call) {
+
+    /**
+     * The one-word answer, shown in bold, with the one-line reason and the rule that produced it.
+     *
+     * @param call BUY / WAIT / AVOID for a stock you don't own; HOLD / SELL for one you do
+     */
+    public record Call(String call, String headline, String rule) {
+    }
 
     /** Where the price sits versus its own history. Returns and distances are fractions. */
     public record Trend(double sma50, double sma200, double vsSma200, boolean aboveSma200, boolean sma50AboveSma200,
@@ -53,10 +63,12 @@ public record StockAnalysis(
      * @param highPrice       today's price x (1 + p75): a quarter did better
      * @param baselineMedian  median for ALL stocks over the same horizon and market state, for comparison
      * @param sameMarketState true if the numbers are from the same Nifty state as today, false if pooled
+     * @param chanceAboveCost for a holding: share of similar cases that ended this horizon at or above your
+     *                        average price (null when you didn't enter a position)
      */
     public record HorizonOutlook(String label, int sessions, LocalDate around, double typicalPrice, double lowPrice,
                                  double highPrice, double median, double p25, double p75, double positiveShare,
-                                 int samples, double baselineMedian, boolean sameMarketState) {
+                                 int samples, double baselineMedian, boolean sameMarketState, Double chanceAboveCost) {
     }
 
     /** points: each reason's contribution; label: plain verdict; action: what the signals suggest doing. */

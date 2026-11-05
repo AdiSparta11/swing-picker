@@ -19,6 +19,7 @@ import com.swingpicker.core.analysis.StockAnalysisService;
 import com.swingpicker.core.momentum.MomentumService;
 import com.swingpicker.data.CachingMarketDataProvider;
 import com.swingpicker.data.SymbolSearch;
+import com.swingpicker.data.YahooFundamentals;
 import com.swingpicker.data.UniverseLoader;
 import com.swingpicker.data.UniverseLoader.Universe;
 import com.swingpicker.data.YahooChartParser;
@@ -156,7 +157,7 @@ public class WiringConfig {
                                                      MarketRegime regime, SwingSetups setups,
                                                      BacktestEdgeEstimator edges, LiveSession session, Clock clock) {
         return new StockAnalysisService(universe.stocks(), names.bySymbol(), data, regime, setups.all(), edges, session,
-                clock, new StockAnalysisService.Config(HISTORY_YEARS, 21, Duration.ofHours(6)));
+                clock, new StockAnalysisService.Config(HISTORY_YEARS, 21, Duration.ofHours(6)), new YahooFundamentals(clock));
     }
 
     @Bean

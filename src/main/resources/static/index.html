@@ -69,6 +69,18 @@
   label.check input { flex:0 0 auto; width:auto; }
   .field small { display:block; color:var(--muted); font-size:12px; margin-bottom:3px; }
   .field input { width:100%; }
+  .callcard { margin-top:20px; padding:20px; border-radius:12px; border:2px solid var(--line); background:var(--card); }
+  .callcard.go { border-color:var(--good); }
+  .callcard.stop { border-color:var(--bad); }
+  .callword { font-size:40px; line-height:1; font-weight:800; letter-spacing:1px; }
+  .callcard.go .callword { color:var(--good); }
+  .callcard.stop .callword { color:var(--bad); }
+  .callname { color:var(--muted); font-size:14px; margin:6px 0 10px; }
+  .callline { font-size:17px; font-weight:600; margin-bottom:10px; }
+  .quick { display:flex; flex-wrap:wrap; gap:8px 18px; font-size:14px; color:var(--muted); }
+  .quick b { color:var(--fg); }
+  details.more { margin-top:14px; }
+  details.more > summary { cursor:pointer; color:var(--accent); font-weight:600; padding:6px 0; }
   ul.reasons { list-style:none; padding:0; margin:10px 0 0; }
   ul.reasons li { display:flex; gap:10px; padding:6px 0; border-top:1px solid var(--line); font-size:14px; }
   ul.reasons li:first-child { border-top:0; }
@@ -324,10 +336,28 @@
 
   const symbolFrom = v => v.split(' — ')[0].trim().toUpperCase();
 
-  function analysisView(a) {
-    const v = a.verdict, t = a.trend, mo = a.momentum, h = a.holding;
+  function analysisView(a, typedName) {
+    const v = a.verdict, t = a.trend, mo = a.momentum, h = a.holding, c = a.consensus, call = a.call;
+    const name = a.name && a.name !== a.symbol ? a.name : (typedName || a.symbol);
+    const byLabel = l => a.outlook.find(o => o.label === l);
+    const six = byLabel('6 months'), year = byLabel('1 year');
+    const tone = { BUY: 'go', HOLD: 'go', SELL: 'stop', AVOID: 'stop' }[call.call] || '';
+    const chanceLine = h && h.pnl < 0 && (six || year) ? `<span>Chance back above ${px(h.averagePrice)}: `
+      + [six && ok(six.chanceAboveCost) ? `6 months <b>${Math.round(six.chanceAboveCost * 100)}%</b>` : '',
+         year && ok(year.chanceAboveCost) ? `1 year <b>${Math.round(year.chanceAboveCost * 100)}%</b>` : ''].filter(Boolean).join(' · ') + `</span>` : '';
+    const analystLine = c && ok(c.targetMean) && c.analysts
+      ? `<span>Analysts' 1-year target: <b>${px(c.targetMean)}</b> (${pct(c.targetMean / a.price - 1)}, ${c.analysts} analyst${c.analysts === 1 ? '' : 's'}${c.rating ? ', ' + esc(c.rating.replace('_', ' ')) : ''})</span>`
+      : `<span>Analysts' target: <b>not available</b></span>`;
+    const typicalLine = year ? `<span>Typical in 1 year: <b>${px(year.typicalPrice)}</b> (${pct(year.median)})</span>` : '';
+    const pnlLine = h ? `<span>Your P&L: <b class="${cls(h.pnl)}">${h.pnl >= 0 ? '+' : '−'}${inr(Math.abs(h.pnl))} (${pct(h.pnlPct)})</b></span>` : '';
+    const callCard = `<div class="callcard ${tone}">
+      <div class="callword">${esc(call.call)}</div>
+      <div class="callname">${esc(name)} (${esc(a.symbol)}) · ${px(a.price)} ${a.livePrice ? 'live' : 'at the ' + esc(fmtDate(a.asOf)) + ' close'}</div>
+      <div class="callline">${esc(call.headline)}</div>
+      <div class="quick">${pnlLine}${chanceLine}${typicalLine}${analystLine}</div>
+    </div>`;
     const head = `<div class="card">
-      <div class="head"><span class="sym">${esc(a.name)} <span class="sector">(${esc(a.symbol)})</span></span>
+      <div class="head"><span class="sym">${esc(name)} <span class="sector">(${esc(a.symbol)})</span></span>
         <span class="sector">${a.inUniverse ? esc(a.sector) : 'Not in the Nifty 200 · ranked against it'}</span></div>
       <div class="big">${px(a.price)}</div>
       <div class="note">${a.livePrice ? '<span class="live-dot"></span>Live price' : 'Close of ' + esc(fmtDate(a.asOf))}</div>
@@ -352,7 +382,8 @@
         <span class="${cls(o.median)}">${px(o.typicalPrice)}</span><small>${pct(o.median)} typical</small>
         <small>Range ${px(o.lowPrice)} – ${px(o.highPrice)}</small>
         <small>${Math.round(o.positiveShare * 100)}% ended up · all stocks ${pct(o.baselineMedian)}</small>
-        ${h ? `<small class="${cls(o.typicalPrice - h.averagePrice)}">${o.typicalPrice >= h.averagePrice ? 'Above' : 'Below'} your ${px(h.averagePrice)}</small>` : ''}
+        ${h ? `<small class="${cls(o.typicalPrice - h.averagePrice)}">Typical is ${o.typicalPrice >= h.averagePrice ? 'above' : 'below'} your ${px(h.averagePrice)}</small>` : ''}
+        ${h && ok(o.chanceAboveCost) ? `<small><b>${Math.round(o.chanceAboveCost * 100)}%</b> of cases ended above your price</small>` : ''}
         <small>${o.samples} cases</small>
       </div>`).join('')}</div>` : `<p class="note">Less than a year of prices, so there's no momentum rank or outlook yet.</p>`;
     const facts = `<h2>The facts behind it</h2><div class="grid">
@@ -370,8 +401,22 @@
         <div class="lv">Ref ${px(s.plan.entry)} · stop ${px(s.plan.stop)} (${pct(s.plan.stop / s.plan.entry - 1)}) · target ${px(s.plan.target)} (${pct(s.plan.target / s.plan.entry - 1)}) · don't pay above ${px(s.plan.maxEntry)}</div>
         <div class="lv">Setup record: ${sgnR(s.record.expectancyR)} per trade (earlier ${sgnR(s.record.earlierExpectancyR)}, last 12 months ${sgnR(s.record.recentExpectancyR)})</div>
       </div>`).join('') : '';
-    return head + verdict + holding + outlook + facts + setups
-      + `<p class="note" style="margin-top:16px">Not investment or tax advice. The verdict counts signals; it doesn't know the company's results, debt, management or news. Check those too.</p>`;
+    const fmtX = v => ok(v) ? v.toFixed(1) + '×' : 'n/a';
+    const analysts = `<h2>What analysts and valuation say</h2>` + (c ? `<div class="grid">
+      <div class="cell"><small>Average 1-year target</small><span>${ok(c.targetMean) ? px(c.targetMean) : 'n/a'}</span><small>${ok(c.targetMean) ? pct(c.targetMean / a.price - 1) + ' from here' : ''}</small></div>
+      <div class="cell"><small>Target range</small><span>${ok(c.targetLow) && ok(c.targetHigh) ? px(c.targetLow) + ' – ' + px(c.targetHigh) : 'n/a'}</span></div>
+      <div class="cell"><small>Analysts · rating</small><span>${c.analysts ?? 0}${c.rating ? ' · ' + esc(c.rating.replace('_', ' ')) : ''}</span></div>
+      <div class="cell"><small>P/E (last 12 mo · next 12 mo)</small><span>${fmtX(c.trailingPE)} · ${fmtX(c.forwardPE)}</span></div>
+      <div class="cell"><small>EPS (last · forecast)</small><span>${ok(c.trailingEps) ? px(c.trailingEps) : 'n/a'} · ${ok(c.forwardEps) ? px(c.forwardEps) : 'n/a'}</span></div>
+      <div class="cell"><small>Earnings growth (yoy)</small><span class="${cls(c.earningsGrowth)}">${pct(c.earningsGrowth)}</span></div>
+      <div class="cell"><small>Revenue growth (yoy)</small><span class="${cls(c.revenueGrowth)}">${pct(c.revenueGrowth)}</span></div>
+      <div class="cell"><small>Debt / equity</small><span>${ok(c.debtToEquity) ? c.debtToEquity.toFixed(2) : 'n/a'}</span></div>
+    </div><p class="note">An analyst's price target is usually forecast earnings per share × the P/E they think is fair. Targets lean optimistic on average, so the verdict only counts an upside above 15% (and only with 3+ analysts). Source: Yahoo Finance consensus.</p>`
+      : `<p class="note">No analyst data could be loaded for this stock right now (small companies often have no coverage).</p>`);
+    const rule = `<p class="note"><b>How the call is made:</b> ${esc(call.rule)}</p>`;
+    return callCard + `<details class="more"><summary>Show all the details</summary>`
+      + head + verdict + holding + outlook + analysts + facts + setups + rule
+      + `<p class="note" style="margin-top:16px">Not investment or tax advice. The verdict counts signals; it doesn't know the company's results, debt, management or news. Check those too.</p></details>`;
   }
 
   document.getElementById('f2').addEventListener('submit', async (ev) => {
@@ -389,7 +434,7 @@
     try {
       const res = await fetch('/api/stock?' + params.toString());
       const body = await res.json();
-      out2.innerHTML = res.ok ? analysisView(body)
+      out2.innerHTML = res.ok ? analysisView(body, (symInput.value.split(' — ')[1] || '').trim())
         : `<div class="verdict"><b>Couldn't check ${esc(symbol)} (HTTP ${res.status})</b>${esc(body.marketDataError || body.error || body.pending || JSON.stringify(body))}</div>`;
     } catch (err) {
       out2.innerHTML = `<div class="verdict"><b>Request failed</b>${esc(err)}</div>`;

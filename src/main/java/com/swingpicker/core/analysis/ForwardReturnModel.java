@@ -37,13 +37,39 @@ public final class ForwardReturnModel {
     }
 
     private final Map<Key, Stats[]> table;
+    private final Map<Key, double[][]> sorted;
     private final LocalDate from;
     private final LocalDate to;
 
-    private ForwardReturnModel(Map<Key, Stats[]> table, LocalDate from, LocalDate to) {
+    private ForwardReturnModel(Map<Key, Stats[]> table, Map<Key, double[][]> sorted, LocalDate from, LocalDate to) {
         this.table = table;
+        this.sorted = sorted;
         this.from = from;
         this.to = to;
+    }
+
+    /**
+     * Share of cases (same bucket and fallback as {@link #get}) whose forward return was at least {@code threshold}.
+     * For "chance it gets back above my buy price", the threshold is the rise needed to break even.
+     */
+    public double shareAtLeast(int quintile, Boolean regimeUp, int horizon, double threshold) {
+        Key k = usesRegime(quintile, regimeUp, horizon) ? new Key(quintile, regimeUp) : new Key(quintile, null);
+        double[][] all = sorted.get(k);
+        if (all == null || all[horizon].length == 0) {
+            return Double.NaN;
+        }
+        double[] v = all[horizon];
+        int lo = 0;
+        int hi = v.length;   // first index with v[i] >= threshold
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (v[mid] < threshold) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        return (v.length - lo) / (double) v.length;
     }
 
     public LocalDate from() {
@@ -148,14 +174,18 @@ public final class ForwardReturnModel {
         }
 
         Map<Key, Stats[]> table = new HashMap<>();
+        Map<Key, double[][]> sorted = new HashMap<>();
         samples.forEach((k, lists) -> {
             Stats[] s = new Stats[HORIZONS.length];
+            double[][] arr = new double[HORIZONS.length][];
             for (int h = 0; h < HORIZONS.length; h++) {
                 s[h] = stats(lists.get(h));
+                arr[h] = lists.get(h).stream().mapToDouble(Double::doubleValue).sorted().toArray();
             }
             table.put(k, s);
+            sorted.put(k, arr);
         });
-        return new ForwardReturnModel(table, first, last);
+        return new ForwardReturnModel(table, sorted, first, last);
     }
 
     private static void add(Map<Key, List<List<Double>>> samples, Key k, int h, double r) {
